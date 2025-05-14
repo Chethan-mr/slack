@@ -5,6 +5,7 @@
 const NodeCache = require('node-cache');
 const { OpenAI } = require('openai');
 const { getKnowledgeBaseAnswer } = require('./knowledge-base');
+const { getKnowledgeBaseAnswer } = require('./enhanced-knowledge-base');
 
 // Initialize cache for conversations
 const conversationCache = new NodeCache({ stdTTL: 3600 }); // 1 hour TTL
