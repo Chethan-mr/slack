@@ -1,0 +1,17 @@
+{
+  "name": "databricks-slack-bot",
+  "version": "1.0.0",
+  "description": "Educational Slack bot for Databricks FAQs",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.13.0",
+    "dotenv": "^16.0.3",
+    "node-cache": "^5.1.2"
+  },
+  "engines": {
+    "node": "16.x"
+  }
+}
