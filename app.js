@@ -3,6 +3,8 @@ const dotenv = require('dotenv');
 const { MongoClient } = require('mongodb');
 const knowledgeLearner = require('./knowledge-learner');
 const channelHandler = require('./dynamic-channel-handler');
+const enhancedKnowledgeBase = require('./enhanced-knowledge-base');
+
 
 // Load environment variables
 dotenv.config();
@@ -115,80 +117,75 @@ const app = new App({
 app.message(async ({ message, say, client }) => {
   // Skip messages from bots
   if (message.subtype === 'bot_message') return;
-  
+
   console.log('Received message:', message.text);
-  
+
   try {
     const text = message.text?.toLowerCase() || '';
     let response = "I'm not sure I understand that question. Could you rephrase it or ask about Zoom, ILT sessions, recordings, or the learning portal?";
     let matched = false;
-    
+
     // Get message context from channel handler
     const context = await channelHandler.getMessageContext(message, client);
     const programName = context.programInfo?.programName || 'General';
-    
-    // ADMIN COMMANDS handling - unchanged
-    if (text === '!dbping' && (message.user === process.env.ADMIN_USER_ID)) {
-      // Same as before
-      // ...
-    }
-    
-    // Check for learned answers from previous questions
+
+    // ADMIN COMMANDS handling (if any)...
+
+    // 1. Try to find a learned answer first
     const learnedResponse = await knowledgeLearner.findLearnedAnswer(text, programName);
-    
     if (learnedResponse && learnedResponse.confidence > 0.7) {
-      // Use the learned answer
       response = learnedResponse.answer;
       matched = true;
-      
+
       // Customize with program context if available
       if (context.programInfo) {
         response = channelHandler.customizeResponse(response, context);
       }
     }
-    // If no learned answer, check for resource links
-    else if (context.programInfo) {
-      const linkResponse = channelHandler.getLinkResponse(text, context);
-      
-      if (linkResponse) {
-        response = linkResponse;
+    else {
+      // 2. Try simple keyword matching from enhanced knowledge base
+      const simpleResponse = enhancedKnowledgeBase.getSimpleMatch(text);
+      if (simpleResponse) {
+        response = simpleResponse;
         matched = true;
       }
       else {
-        // Existing pattern matching logic - unchanged
-        // CASUAL CONVERSATION PATTERNS
-        if (text.match(/\b(hi|hello|hey|greetings|howdy)\b/i)) {
-          // ...existing patterns
+        // 3. Try resource links based on context (existing logic)
+        if (context.programInfo) {
+          const linkResponse = channelHandler.getLinkResponse(text, context);
+          if (linkResponse) {
+            response = linkResponse;
+            matched = true;
+          } else {
+            // 4. You can add any additional pattern matching here if needed
+            // else fallback to default response (already set)
+          }
         }
-        // And so on with all existing patterns...
       }
     }
-    
+
     // Send the response
     await say(response);
     console.log('Sent response:', response);
-    
+
     // Log the question to MongoDB if connected
     if (isConnected) {
       try {
-        // Get user info for better logging
-        const userInfo = await client.users.info({ user: message.user });
         let username = 'unknown';
 
-try {
-  const userInfo = await client.users.info({ user: message.user });
-  username = userInfo.user.name || userInfo.user.real_name || 'unknown';
-} catch (error) {
-  if (error.data && error.data.error === 'missing_scope') {
-    console.warn('Missing users:read scope; cannot fetch user info. Using "unknown" as username.');
-  } else {
-    // Re-throw other errors so they can be handled or logged elsewhere
-    throw error;
-  }
-}
+        // Safe user info fetching with missing_scope handling
+        try {
+          const userInfo = await client.users.info({ user: message.user });
+          username = userInfo.user.name || userInfo.user.real_name || 'unknown';
+        } catch (error) {
+          if (error.data && error.data.error === 'missing_scope') {
+            console.warn('Missing users:read scope; cannot fetch user info. Using "unknown" as username.');
+          } else {
+            throw error;
+          }
+        }
 
-        
-        // Get channel info
+        // Get channel info for channel name
         let channelName = 'direct-message';
         if (message.channel.startsWith('C')) {
           try {
@@ -198,7 +195,7 @@ try {
             console.error('Error getting channel info:', channelError);
           }
         }
-        
+
         // Log to MongoDB
         await logQuestion(
           message.user,
@@ -221,130 +218,5 @@ try {
     } catch (sayError) {
       console.error('Error sending error message:', sayError);
     }
-  }
-});
-
-// App mention handler - modified to use learned responses
-app.event('app_mention', async ({ event, say, client }) => {
-  try {
-    console.log('Received mention:', event.text);
-    
-    // Extract the actual message (remove the mention)
-    const text = event.text.replace(/<@[A-Z0-9]+>/, '').trim();
-    
-    // If the mention contains a specific question, process it
-    if (text.length > 0) {
-      // Get message context
-      const context = await channelHandler.getMessageContext({
-        text: text,
-        user: event.user,
-        channel: event.channel,
-        ts: event.ts
-      }, client);
-      
-      const programName = context.programInfo?.programName || 'General';
-      
-      // Check for learned answers
-      const learnedResponse = await knowledgeLearner.findLearnedAnswer(text, programName);
-      
-      let response = "I'm not sure I understand that question. Could you rephrase it or ask about Zoom, ILT sessions, recordings, or the learning portal?";
-      let matched = false;
-      
-      if (learnedResponse && learnedResponse.confidence > 0.7) {
-        // Use the learned answer
-        response = learnedResponse.answer;
-        matched = true;
-        
-        // Customize with program context if available
-        if (context.programInfo) {
-          response = channelHandler.customizeResponse(response, context);
-        }
-      }
-      else {
-        // Use existing pattern matching logic
-        // This section remains unchanged
-      }
-      
-      // Send the response in thread
-      await say({
-        text: response,
-        thread_ts: event.ts
-      });
-      
-      // Log to MongoDB if connected
-      // This section remains unchanged
-    } else {
-      // Just a mention with no specific question
-      await say({
-        text: "Hi there! I'm EnquBuddy, your learning assistant for the Enqurious Databricks program. How can I help you today?",
-        thread_ts: event.ts
-      });
-    }
-  } catch (error) {
-    console.error('Error processing mention:', error);
-    try {
-      await say({
-        text: "I'm sorry, I encountered an error while processing your mention. Please try again.",
-        thread_ts: event.ts
-      });
-    } catch (sayError) {
-      console.error('Error sending error message for mention:', sayError);
-    }
-  }
-});
-
-// Home tab - remains largely unchanged
-app.event('app_home_opened', async ({ event, client }) => {
-  // Existing implementation
-  // ...
-});
-
-// Define the port - use the one Render provides
-const PORT = process.env.PORT || 3000;
-
-// Start the Slack app
-(async () => {
-  try {
-    // First try to connect to MongoDB
-    const dbConnected = await connectToMongoDB();
-    if (dbConnected) {
-      console.log('MongoDB connected successfully');
-      isConnected = true;
-      
-      // Initialize knowledge learner's periodic learning
-      knowledgeLearner.schedulePeriodicLearning(app.client);
-      
-      // Initialize channel handler's periodic scanning
-      channelHandler.scheduleChannelScans(app.client);
-      
-      // Initial learning from history
-      console.log('Starting initial learning from channel history...');
-      await knowledgeLearner.learnFromChannelHistory(app.client);
-      await knowledgeLearner.learnFromBotHistory();
-      console.log('Initial learning completed.');
-    } else {
-      console.warn('MongoDB connection failed, continuing without question logging');
-      isConnected = false;
-    }
-    
-    // Then start the Slack app
-    await app.start(PORT);
-    console.log(`⚡️ Educational Bot is running on port ${PORT}!`);
-  } catch (error) {
-    console.error('Error starting the app:', error);
-  }
-})();
-
-// Handle graceful shutdown
-process.on('SIGINT', async () => {
-  try {
-    if (mongoClient) {
-      await mongoClient.close();
-      console.log('MongoDB connection closed');
-    }
-    process.exit(0);
-  } catch (error) {
-    console.error('Error during shutdown:', error);
-    process.exit(1);
   }
 });
