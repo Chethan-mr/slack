@@ -327,6 +327,7 @@ function getKnowledgeBaseAnswer(query) {
 // ==========================================
 
 module.exports = {
+  getSimpleMatch,
   getKnowledgeBaseAnswer,
   TOPICS,
   COURSE_INFO,
