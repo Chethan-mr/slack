@@ -1,7 +1,7 @@
 const { MongoClient } = require('mongodb');
 
 // MongoDB Connection Configuration (using environment variables)
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://chethan:Chethann@1995@SlackBotAnalytics.mongodb.net/botlogs?retryWrites=true&w=majority';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://chethan:Chethann@1995@enqubuddylogs.mongodb.net/botlogs?retryWrites=true&w=majority';
 const DB_NAME = 'botlogs';
 const COLLECTION_NAME = 'questions';
 
