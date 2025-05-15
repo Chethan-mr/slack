@@ -173,7 +173,20 @@ app.message(async ({ message, say, client }) => {
       try {
         // Get user info for better logging
         const userInfo = await client.users.info({ user: message.user });
-        const username = userInfo.user.name || userInfo.user.real_name || 'unknown';
+        let username = 'unknown';
+
+try {
+  const userInfo = await client.users.info({ user: message.user });
+  username = userInfo.user.name || userInfo.user.real_name || 'unknown';
+} catch (error) {
+  if (error.data && error.data.error === 'missing_scope') {
+    console.warn('Missing users:read scope; cannot fetch user info. Using "unknown" as username.');
+  } else {
+    // Re-throw other errors so they can be handled or logged elsewhere
+    throw error;
+  }
+}
+
         
         // Get channel info
         let channelName = 'direct-message';
