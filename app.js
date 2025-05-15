@@ -1,4 +1,4 @@
-// app.js - Simple direct response version
+// app.js - Enhanced with casual conversation support
 const { App } = require('@slack/bolt');
 const dotenv = require('dotenv');
 
@@ -17,10 +17,24 @@ app.message(async ({ message, say }) => {
   
   try {
     const text = message.text?.toLowerCase() || '';
-    let response = "I'm not sure I understand that question. Could you rephrase it?";
+    let response = "I'm not sure I understand that question. Could you rephrase it or ask about Zoom, ILT sessions, recordings, or the learning portal?";
     
-    // Simple keyword matching
-    if (text.includes('zoom') && (text.includes('login') || text.includes('loggin') || text.includes('log in'))) {
+    // CASUAL CONVERSATION PATTERNS
+    if (text.match(/hi|hello|hey|greetings/i)) {
+      response = "Hello! 👋 I'm your learning assistant bot. How can I help you today with the Enqurious Databricks program?";
+    }
+    else if (text.match(/how are you|how you doing|how's it going/i)) {
+      response = "I'm doing well, thanks for asking! I'm here to help with any questions about the Enqurious Databricks program. What can I assist you with today?";
+    }
+    else if (text.match(/thank|thanks/i)) {
+      response = "You're welcome! Feel free to ask if you have any other questions.";
+    }
+    else if (text.match(/who are you|what are you|what do you do/i)) {
+      response = "I'm EnquBuddy, an assistant bot for the Enqurious Client Programs - Databricks course. I can help answer questions about Zoom sessions, recordings, learning modules, and more!";
+    }
+    
+    // COURSE-SPECIFIC PATTERNS
+    else if (text.includes('zoom') && (text.includes('login') || text.includes('loggin') || text.includes('log in'))) {
       response = "If you're having trouble logging into Zoom, double-check your credentials, reset your password if necessary, and ensure you're using the correct email associated with your account.";
     } 
     else if (text.includes('zoom') && text.includes('join')) {
@@ -37,6 +51,12 @@ app.message(async ({ message, say }) => {
     }
     else if (text.includes('help')) {
       response = "I can help with questions about Zoom sessions, recordings, learning modules, ILTs, and more. What specific information do you need?";
+    }
+    else if (text.includes('learning') || text.includes('module')) {
+      response = "Learning modules are self-study materials available on the Enqurious learning portal. You can complete these at your own pace.";
+    }
+    else if (text.includes('ilt')) {
+      response = "ILT stands for Instructor-Led Training. These are live sessions conducted by mentors on Zoom where you can ask questions, discuss problems, and gain deeper insights.";
     }
     
     // Send the response
