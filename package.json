@@ -10,7 +10,7 @@
     "@slack/bolt": "^3.13.0",
     "dotenv": "^16.0.3",
     "node-cache": "^5.1.2",
-    "openai": "^4.0.0"
+    "@huggingface/inference": "^2.6.1"
   },
   "engines": {
     "node": "16.x"
