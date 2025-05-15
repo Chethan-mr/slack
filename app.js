@@ -1,3 +1,5 @@
+// app.js
+
 const { App } = require('@slack/bolt');
 const dotenv = require('dotenv');
 const { MongoClient } = require('mongodb');
@@ -5,8 +7,7 @@ const knowledgeLearner = require('./knowledge-learner');
 const channelHandler = require('./dynamic-channel-handler');
 const enhancedKnowledgeBase = require('./enhanced-knowledge-base');
 
-
-// Load environment variables
+// Load environment variables from .env file
 dotenv.config();
 
 // MongoDB Connection Configuration
@@ -14,7 +15,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'botlogs';
 const COLLECTION_NAME = 'questions';
 
-// MongoDB Client
+// MongoDB Client and collection references
 let mongoClient = null;
 let questionsCollection = null;
 let isConnected = false;
@@ -25,26 +26,24 @@ async function connectToMongoDB() {
     console.log('No MongoDB URI provided. Skipping database connection.');
     return false;
   }
-  
+
   try {
     console.log('Connecting to MongoDB...');
-    console.log('Connection string starts with:', MONGODB_URI.substring(0, 20) + '...');
-    
     mongoClient = new MongoClient(MONGODB_URI);
     await mongoClient.connect();
     console.log('Connected to MongoDB Atlas');
-    
+
     const db = mongoClient.db(DB_NAME);
     questionsCollection = db.collection(COLLECTION_NAME);
-    
+
     // Create indexes for better query performance
     await questionsCollection.createIndex({ timestamp: -1 });
     await questionsCollection.createIndex({ question: 'text' });
     await questionsCollection.createIndex({ userId: 1 });
-    
+
     // Connect knowledge learner to MongoDB
     await knowledgeLearner.connectToMongoDB(MONGODB_URI);
-    
+
     isConnected = true;
     return true;
   } catch (error) {
@@ -56,7 +55,7 @@ async function connectToMongoDB() {
 // Log a question to MongoDB
 async function logQuestion(userId, username, channelId, channelName, question, response, matched, programName = 'General') {
   if (!isConnected || !questionsCollection) return null;
-  
+
   try {
     const result = await questionsCollection.insertOne({
       userId,
@@ -69,12 +68,12 @@ async function logQuestion(userId, username, channelId, channelName, question, r
       matched,
       timestamp: new Date()
     });
-    
-    // Also record as a Q&A pair for future learning
+
+    // Record as Q&A pair for future learning if matched
     if (matched) {
       await knowledgeLearner.recordQAPair(question, response, programName, 0.9);
     }
-    
+
     console.log(`Question logged with ID: ${result.insertedId}`);
     return result.insertedId;
   } catch (error) {
@@ -83,39 +82,14 @@ async function logQuestion(userId, username, channelId, channelName, question, r
   }
 }
 
-// Get frequent questions (for admin reporting)
-async function getFrequentQuestions(limit = 10) {
-  // Same as before
-  // ...
-}
-
-// Get unanswered questions (questions that didn't match any pattern)
-async function getUnansweredQuestions(limit = 10) {
-  // Same as before
-  // ...
-}
-
-// Get question statistics
-async function getQuestionStats() {
-  // Same as before
-  // ...
-}
-
-// Test database connection
-async function pingDatabase() {
-  // Same as before
-  // ...
-}
-
-// Initialize the Slack app
+// Initialize Slack app
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
 
-// Simple message handler with advanced pattern matching and learning
+// Message handler with learned answers, simple matching, and fallback
 app.message(async ({ message, say, client }) => {
-  // Skip messages from bots
   if (message.subtype === 'bot_message') return;
 
   console.log('Received message:', message.text);
@@ -125,55 +99,46 @@ app.message(async ({ message, say, client }) => {
     let response = "I'm not sure I understand that question. Could you rephrase it or ask about Zoom, ILT sessions, recordings, or the learning portal?";
     let matched = false;
 
-    // Get message context from channel handler
     const context = await channelHandler.getMessageContext(message, client);
     const programName = context.programInfo?.programName || 'General';
 
-    // ADMIN COMMANDS handling (if any)...
-
-    // 1. Try to find a learned answer first
+    // 1. Learned answer from knowledgeLearner
     const learnedResponse = await knowledgeLearner.findLearnedAnswer(text, programName);
     if (learnedResponse && learnedResponse.confidence > 0.7) {
       response = learnedResponse.answer;
       matched = true;
 
-      // Customize with program context if available
       if (context.programInfo) {
         response = channelHandler.customizeResponse(response, context);
       }
     }
     else {
-      // 2. Try simple keyword matching from enhanced knowledge base
+      // 2. Simple keyword matching from enhancedKnowledgeBase
       const simpleResponse = enhancedKnowledgeBase.getSimpleMatch(text);
       if (simpleResponse) {
         response = simpleResponse;
         matched = true;
       }
       else {
-        // 3. Try resource links based on context (existing logic)
+        // 3. Link response based on context
         if (context.programInfo) {
           const linkResponse = channelHandler.getLinkResponse(text, context);
           if (linkResponse) {
             response = linkResponse;
             matched = true;
-          } else {
-            // 4. You can add any additional pattern matching here if needed
-            // else fallback to default response (already set)
           }
         }
       }
     }
 
-    // Send the response
     await say(response);
     console.log('Sent response:', response);
 
-    // Log the question to MongoDB if connected
+    // Log question safely
     if (isConnected) {
       try {
         let username = 'unknown';
 
-        // Safe user info fetching with missing_scope handling
         try {
           const userInfo = await client.users.info({ user: message.user });
           username = userInfo.user.name || userInfo.user.real_name || 'unknown';
@@ -185,7 +150,6 @@ app.message(async ({ message, say, client }) => {
           }
         }
 
-        // Get channel info for channel name
         let channelName = 'direct-message';
         if (message.channel.startsWith('C')) {
           try {
@@ -196,7 +160,6 @@ app.message(async ({ message, say, client }) => {
           }
         }
 
-        // Log to MongoDB
         await logQuestion(
           message.user,
           username,
@@ -211,6 +174,7 @@ app.message(async ({ message, say, client }) => {
         console.error('Error logging question to database:', loggingError);
       }
     }
+
   } catch (error) {
     console.error('Error processing message:', error);
     try {
@@ -220,3 +184,28 @@ app.message(async ({ message, say, client }) => {
     }
   }
 });
+
+// Start the Slack app and listen on Render's assigned port
+const PORT = process.env.PORT || 3000;
+
+(async () => {
+  const dbConnected = await connectToMongoDB();
+  if (dbConnected) {
+    console.log('MongoDB connected successfully');
+    isConnected = true;
+
+    // Initialize any periodic tasks (optional)
+    knowledgeLearner.schedulePeriodicLearning(app.client);
+    channelHandler.scheduleChannelScans(app.client);
+
+    // Initial learning (optional)
+    console.log('Starting initial learning from channel history...');
+    await knowledgeLearner.learnFromChannelHistory(app.client);
+    await knowledgeLearner.learnFromBotHistory();
+    console.log('Initial learning completed.');
+  }
+
+  await app.start(PORT);
+  console.log(`⚡️ Slack Bolt app is running on port ${PORT}!`);
+})();
+
