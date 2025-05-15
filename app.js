@@ -7,7 +7,7 @@ const { MongoClient } = require('mongodb');
 dotenv.config();
 
 // MongoDB Connection Configuration
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://chethan:Chethann@1995@enqubuddylogs.mongodb.net/botlogs?retryWrites=true&w=majority';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://chethan:<db_password>@enqubuddylogs.skgbxpu.mongodb.net/?retryWrites=true&w=majority&appName=EnquBuddyLogs';
 const DB_NAME = 'botlogs';
 const COLLECTION_NAME = 'questions';
 
