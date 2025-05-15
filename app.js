@@ -1,23 +1,34 @@
 const { App } = require('@slack/bolt');
 const dotenv = require('dotenv');
-const http = require('http');
 const { MongoClient } = require('mongodb');
 
 // Load environment variables
 dotenv.config();
 
 // MongoDB Connection Configuration
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://chethan:<db_password>@enqubuddylogs.skgbxpu.mongodb.net/?retryWrites=true&w=majority&appName=EnquBuddyLogs';
+// The MONGODB_URI environment variable must be set correctly in Render
+// Format should be: mongodb+srv://username:password@clustername.mongodb.net/dbname?retryWrites=true&w=majority
+const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'botlogs';
 const COLLECTION_NAME = 'questions';
 
 // MongoDB Client
 let mongoClient = null;
 let questionsCollection = null;
+let isConnected = false;
 
 // Connect to MongoDB
 async function connectToMongoDB() {
+  // Skip MongoDB if no connection string provided
+  if (!MONGODB_URI) {
+    console.log('No MongoDB URI provided. Skipping database connection.');
+    return false;
+  }
+  
   try {
+    console.log('Connecting to MongoDB...');
+    console.log('Connection string starts with:', MONGODB_URI.substring(0, 20) + '...');
+    
     mongoClient = new MongoClient(MONGODB_URI);
     await mongoClient.connect();
     console.log('Connected to MongoDB Atlas');
@@ -27,9 +38,10 @@ async function connectToMongoDB() {
     
     // Create indexes for better query performance
     await questionsCollection.createIndex({ timestamp: -1 });
-    await questionsCollection.createIndex({ question: 1 });
+    await questionsCollection.createIndex({ question: 'text' });
     await questionsCollection.createIndex({ userId: 1 });
     
+    isConnected = true;
     return true;
   } catch (error) {
     console.error('Error connecting to MongoDB:', error);
@@ -39,7 +51,7 @@ async function connectToMongoDB() {
 
 // Log a question to MongoDB
 async function logQuestion(userId, username, channelId, channelName, question, response, matched) {
-  if (!questionsCollection) return;
+  if (!isConnected || !questionsCollection) return null;
   
   try {
     const result = await questionsCollection.insertOne({
@@ -53,14 +65,16 @@ async function logQuestion(userId, username, channelId, channelName, question, r
       timestamp: new Date()
     });
     console.log(`Question logged with ID: ${result.insertedId}`);
+    return result.insertedId;
   } catch (error) {
     console.error('Error logging question:', error);
+    return null;
   }
 }
 
 // Get frequent questions (for admin reporting)
 async function getFrequentQuestions(limit = 10) {
-  if (!questionsCollection) return [];
+  if (!isConnected || !questionsCollection) return [];
   
   try {
     const questions = await questionsCollection.aggregate([
@@ -83,7 +97,7 @@ async function getFrequentQuestions(limit = 10) {
 
 // Get unanswered questions (questions that didn't match any pattern)
 async function getUnansweredQuestions(limit = 10) {
-  if (!questionsCollection) return [];
+  if (!isConnected || !questionsCollection) return [];
   
   try {
     const questions = await questionsCollection.aggregate([
@@ -106,7 +120,7 @@ async function getUnansweredQuestions(limit = 10) {
 
 // Get question statistics
 async function getQuestionStats() {
-  if (!questionsCollection) return { total: 0, matched: 0, unmatched: 0 };
+  if (!isConnected || !questionsCollection) return { total: 0, matched: 0, unmatched: 0 };
   
   try {
     const total = await questionsCollection.countDocuments();
@@ -122,7 +136,7 @@ async function getQuestionStats() {
 
 // Test database connection
 async function pingDatabase() {
-  if (!mongoClient) {
+  if (!isConnected || !mongoClient) {
     return { 
       connected: false, 
       message: "Not initialized" 
@@ -327,36 +341,38 @@ app.message(async ({ message, say, client }) => {
     await say(response);
     console.log('Sent response:', response);
     
-    // Log the question to MongoDB
-    try {
-      // Get user info for better logging
-      const userInfo = await client.users.info({ user: message.user });
-      const username = userInfo.user.name || userInfo.user.real_name || 'unknown';
-      
-      // Get channel info
-      let channelName = 'direct-message';
-      if (message.channel.startsWith('C')) {
-        try {
-          const channelInfo = await client.conversations.info({ channel: message.channel });
-          channelName = channelInfo.channel.name || 'unknown-channel';
-        } catch (channelError) {
-          console.error('Error getting channel info:', channelError);
+    // Log the question to MongoDB if connected
+    if (isConnected) {
+      try {
+        // Get user info for better logging
+        const userInfo = await client.users.info({ user: message.user });
+        const username = userInfo.user.name || userInfo.user.real_name || 'unknown';
+        
+        // Get channel info
+        let channelName = 'direct-message';
+        if (message.channel.startsWith('C')) {
+          try {
+            const channelInfo = await client.conversations.info({ channel: message.channel });
+            channelName = channelInfo.channel.name || 'unknown-channel';
+          } catch (channelError) {
+            console.error('Error getting channel info:', channelError);
+          }
         }
+        
+        // Log to MongoDB
+        await logQuestion(
+          message.user,
+          username,
+          message.channel,
+          channelName,
+          message.text,
+          response,
+          matched
+        );
+      } catch (loggingError) {
+        console.error('Error logging question to database:', loggingError);
+        // Continue with the bot's operation even if logging fails
       }
-      
-      // Log to MongoDB
-      await logQuestion(
-        message.user,
-        username,
-        message.channel,
-        channelName,
-        message.text,
-        response,
-        matched
-      );
-    } catch (loggingError) {
-      console.error('Error logging question to database:', loggingError);
-      // Continue with the bot's operation even if logging fails
     }
   } catch (error) {
     console.error('Error processing message:', error);
@@ -405,30 +421,32 @@ app.event('app_mention', async ({ event, say, client }) => {
         thread_ts: event.ts
       });
       
-      // Log to MongoDB (similar to the message handler logic)
-      try {
-        const userInfo = await client.users.info({ user: event.user });
-        const username = userInfo.user.name || userInfo.user.real_name || 'unknown';
-        
-        let channelName = 'unknown-channel';
+      // Log to MongoDB if connected
+      if (isConnected) {
         try {
-          const channelInfo = await client.conversations.info({ channel: event.channel });
-          channelName = channelInfo.channel.name || 'unknown-channel';
-        } catch (channelError) {
-          console.error('Error getting channel info:', channelError);
+          const userInfo = await client.users.info({ user: event.user });
+          const username = userInfo.user.name || userInfo.user.real_name || 'unknown';
+          
+          let channelName = 'unknown-channel';
+          try {
+            const channelInfo = await client.conversations.info({ channel: event.channel });
+            channelName = channelInfo.channel.name || 'unknown-channel';
+          } catch (channelError) {
+            console.error('Error getting channel info:', channelError);
+          }
+          
+          await logQuestion(
+            event.user,
+            username,
+            event.channel,
+            channelName,
+            text,
+            response,
+            matched
+          );
+        } catch (loggingError) {
+          console.error('Error logging mention to database:', loggingError);
         }
-        
-        await logQuestion(
-          event.user,
-          username,
-          event.channel,
-          channelName,
-          text,
-          response,
-          matched
-        );
-      } catch (loggingError) {
-        console.error('Error logging mention to database:', loggingError);
       }
     } else {
       // Just a mention with no specific question
@@ -458,17 +476,22 @@ app.event('app_home_opened', async ({ event, client }) => {
     let matchRate = '0';
     let dbStatus = "❓ Unknown";
     
-    try {
-      // Check database status
-      const status = await pingDatabase();
-      dbStatus = status.connected ? "✅ Connected" : "❌ Disconnected";
-      
-      if (status.connected) {
-        stats = await getQuestionStats();
-        matchRate = stats.total > 0 ? ((stats.matched / stats.total) * 100).toFixed(2) : '0';
+    if (isConnected) {
+      try {
+        // Check database status
+        const status = await pingDatabase();
+        dbStatus = status.connected ? "✅ Connected" : "❌ Disconnected";
+        
+        if (status.connected) {
+          stats = await getQuestionStats();
+          matchRate = stats.total > 0 ? ((stats.matched / stats.total) * 100).toFixed(2) : '0';
+        }
+      } catch (dbError) {
+        console.error('Error checking database status:', dbError);
+        dbStatus = "❌ Error";
       }
-    } catch (dbError) {
-      console.error('Error checking database status:', dbError);
+    } else {
+      dbStatus = "❌ Not Connected";
     }
     
     await client.views.publish({
@@ -599,36 +622,25 @@ app.event('app_home_opened', async ({ event, client }) => {
   }
 });
 
-// Define the port
+// Define the port - use the one Render provides
 const PORT = process.env.PORT || 3000;
 
-// Create an HTTP server that responds to all requests
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('EnquBuddy Bot is running!');
-});
-
-// Start the app
+// Start the Slack app
 (async () => {
   try {
-    // First connect to MongoDB
+    // First try to connect to MongoDB
     const dbConnected = await connectToMongoDB();
     if (dbConnected) {
       console.log('MongoDB connected successfully');
+      isConnected = true;
     } else {
       console.warn('MongoDB connection failed, continuing without question logging');
+      isConnected = false;
     }
     
-    // Then start the Slack app with a custom server
-    await app.start({ port: PORT, server });
+    // Then start the Slack app
+    await app.start(PORT);
     console.log(`⚡️ Educational Bot is running on port ${PORT}!`);
-    
-    // Make sure the server is listening
-    if (!server.listening) {
-      server.listen(PORT, () => {
-        console.log(`HTTP server explicitly listening on port ${PORT}`);
-      });
-    }
   } catch (error) {
     console.error('Error starting the app:', error);
   }
