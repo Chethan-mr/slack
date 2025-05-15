@@ -1,84 +1,123 @@
-// app.js - HTTP-based version (no Socket Mode)
+// app.js - Simple direct response version
 const { App } = require('@slack/bolt');
 const dotenv = require('dotenv');
-const { processMessage } = require('./conversation-handler');
 
 // Load environment variables
 dotenv.config();
 
-// Initialize the Slack app WITHOUT Socket Mode
+// Initialize the app
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
-  // Remove socketMode and appToken
 });
 
-// Listen for direct messages to the bot
+// Simple message handler with direct responses
 app.message(async ({ message, say }) => {
-  // Ignore bot's own messages
-  if (message.subtype === 'bot_message') return;
-  
   console.log('Received message:', message.text);
   
   try {
-    // Process the message
-    const response = await processMessage(
-      message, 
-      message.user, 
-      message.channel
-    );
+    const text = message.text?.toLowerCase() || '';
+    let response = "I'm not sure I understand that question. Could you rephrase it?";
+    
+    // Simple keyword matching
+    if (text.includes('zoom') && (text.includes('login') || text.includes('loggin') || text.includes('log in'))) {
+      response = "If you're having trouble logging into Zoom, double-check your credentials, reset your password if necessary, and ensure you're using the correct email associated with your account.";
+    } 
+    else if (text.includes('zoom') && text.includes('join')) {
+      response = "To join the Zoom session, make sure you have created a Zoom account using your official email, verified it, and clicked the meeting link provided.";
+    }
+    else if (text.includes('recording') || text.includes('recordings')) {
+      response = "Meeting recordings are usually uploaded to a shared drive after the session. Check the Slack Canvas Bookmarks for the link to the drive. Recordings typically take 1-2 days to be uploaded.";
+    }
+    else if (text.includes('error message')) {
+      response = "If you see an error message like 'This meeting is for authorized registrants only,' confirm that you're using the correct email and that it matches your registration.";
+    }
+    else if (text.includes('portal') || text.includes('enqurious')) {
+      response = "To access the Enqurious Portal, navigate to the login page, enter the credentials provided in your company email, and upon successful login, you can change your password and username.";
+    }
+    else if (text.includes('help')) {
+      response = "I can help with questions about Zoom sessions, recordings, learning modules, ILTs, and more. What specific information do you need?";
+    }
     
     // Send the response
     await say(response);
     console.log('Sent response:', response);
   } catch (error) {
     console.error('Error processing message:', error);
-    await say("I'm sorry, I encountered an error while processing your message. Please try again.");
+    await say("I'm sorry, I encountered an error. Please try again.");
   }
 });
 
-// Listen for mentions of the bot in channels
+// App mention handler
 app.event('app_mention', async ({ event, say }) => {
-  // Extract the query (remove the bot mention)
-  const text = event.text.replace(/<@[A-Z0-9]+>/, "").trim();
-  console.log('Received mention:', text);
-  
-  // Create a message-like object
-  const message = {
-    text: text,
-    user: event.user,
-    channel: event.channel,
-    ts: event.ts
-  };
-  
   try {
-    // Process the message
-    const response = await processMessage(
-      message,
-      event.user,
-      event.channel
-    );
-    
-    // Reply to the mention (in thread)
+    console.log('Received mention:', event.text);
     await say({
-      text: response,
+      text: "Thanks for mentioning me! I'm here to help with questions about the Enqurious Client Programs - Databricks course. What would you like to know?",
       thread_ts: event.ts
     });
-    console.log('Sent mention response:', response);
   } catch (error) {
     console.error('Error processing mention:', error);
-    await say({
-      text: "I'm sorry, I encountered an error while processing your message. Please try again.",
-      thread_ts: event.ts
-    });
   }
 });
 
-// Define the port to run on
+// Home tab
+app.event('app_home_opened', async ({ event, client }) => {
+  try {
+    await client.views.publish({
+      user_id: event.user,
+      view: {
+        "type": "home",
+        "blocks": [
+          {
+            "type": "header",
+            "text": {
+              "type": "plain_text",
+              "text": "Enqurious Databricks Learning Assistant",
+              "emoji": true
+            }
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "Hello! 👋 I'm your learning assistant bot. I can help answer questions about the Enqurious Client Programs - Databricks course."
+            }
+          },
+          {
+            "type": "divider"
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "*What I can help with:*"
+            }
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "• 💻 *Zoom issues* - joining meetings, troubleshooting, recordings\n• 📝 *Learning modules* - accessing content, deadlines, self-paced learning\n• 🎓 *ILT sessions* - schedules, recordings, preparation\n• 🔑 *Portal access* - login help, troubleshooting"
+            }
+          }
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Error publishing home view:', error);
+  }
+});
+
+// Define the port
 const PORT = process.env.PORT || 3000;
 
 // Start the app
 (async () => {
-  await app.start(PORT);
-  console.log(`⚡️ Educational Bot is running on port ${PORT}!`);
+  try {
+    await app.start(PORT);
+    console.log(`⚡️ Educational Bot is running on port ${PORT}!`);
+  } catch (error) {
+    console.error('Error starting the app:', error);
+  }
 })();
