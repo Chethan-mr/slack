@@ -171,6 +171,9 @@ function identifyQAPairs(messages, channelId, channelName) {
     return [];
   }
   
+  // Log for debugging
+  console.log(`Analyzing ${messages.length} messages for Q&A pairs`);
+  
   // Sort messages by timestamp (oldest first)
   const sortedMessages = [...messages].sort((a, b) => 
     parseFloat(a.ts) - parseFloat(b.ts)
@@ -185,13 +188,20 @@ function identifyQAPairs(messages, channelId, channelName) {
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
   
-  for (const message of sortedMessages) {
+  for (let i = 0; i < sortedMessages.length; i++) {
+    const message = sortedMessages[i];
+    
     // Skip empty messages
     if (!message || !message.text) continue;
     
     // Skip bot messages except for our own bot
     if (message.subtype === 'bot_message' && !message.bot_id?.includes('EnquBuddy')) {
       continue;
+    }
+    
+    // For debugging, log recognized questions
+    if (isLikelyQuestion(message.text)) {
+      console.log(`Identified potential question: "${message.text.substring(0, 50)}..."`);
     }
     
     // Check if message looks like a question
@@ -207,33 +217,55 @@ function identifyQAPairs(messages, channelId, channelName) {
         programName: programName
       };
       qaGroups.push(currentGroup);
-    } 
-    // If we have a current group and this is a potential answer
-    else if (currentGroup && 
-             (message.bot_id || // Bot answers
-              (message.text && currentGroup.question && message.text.includes(currentGroup.question.substring(0, Math.min(10, currentGroup.question.length)))) || // Quoted reply
-              message.thread_ts === currentGroup.ts)) { // Threaded reply
       
-      // Add this as an answer to the current question
-      currentGroup.answers.push({
-        text: message.text,
-        userId: message.user,
-        isBotAnswer: !!message.bot_id,
-        ts: message.ts
-      });
-      
-      // If this is our bot's answer, prioritize it
-      if (message.bot_id && message.bot_id.includes('EnquBuddy')) {
-        currentGroup.botAnswer = message.text;
-        currentGroup.confidence = 0.9; // High confidence for our own answers
+      // Look ahead for answers within a reasonable time frame (next 10 messages or thread replies)
+      const maxAnswerLookAhead = 10;
+      for (let j = i + 1; j < Math.min(sortedMessages.length, i + 1 + maxAnswerLookAhead); j++) {
+        const potentialAnswer = sortedMessages[j];
+        
+        // Skip if it's empty
+        if (!potentialAnswer || !potentialAnswer.text) continue;
+        
+        // If this message is a reply to the question (in thread or mentions/quotes it)
+        const isThread = potentialAnswer.thread_ts === message.ts;
+        const isQuote = potentialAnswer.text.includes(message.text.substring(0, Math.min(20, message.text.length)));
+        const isDirectReply = j === i + 1; // Next message is often a reply even without thread/quote
+        
+        // Check if this could be an answer
+        if (isThread || isQuote || isDirectReply || potentialAnswer.bot_id) {
+          console.log(`Found potential answer to question: "${potentialAnswer.text.substring(0, 50)}..."`);
+          
+          currentGroup.answers.push({
+            text: potentialAnswer.text,
+            userId: potentialAnswer.user,
+            isBotAnswer: !!potentialAnswer.bot_id,
+            ts: potentialAnswer.ts
+          });
+          
+          // If this is our bot's answer, prioritize it
+          if (potentialAnswer.bot_id && potentialAnswer.bot_id.includes('EnquBuddy')) {
+            currentGroup.botAnswer = potentialAnswer.text;
+            currentGroup.confidence = 0.9; // High confidence for our own answers
+          }
+        }
       }
     }
+  }
+  
+  // Log the found Q&A pairs
+  if (qaGroups.length > 0) {
+    qaGroups.forEach((group, index) => {
+      console.log(`Q&A Pair ${index + 1}:`);
+      console.log(`  Question: ${group.question.substring(0, 50)}...`);
+      console.log(`  Answers: ${group.answers.length}`);
+    });
+  } else {
+    console.log('No Q&A pairs found in messages');
   }
   
   // Filter out groups with no answers
   return qaGroups.filter(group => group.answers && group.answers.length > 0);
 }
-
 /**
  * Check if a message is likely a question
  * @param {string} text - Message text
@@ -250,15 +282,22 @@ function isLikelyQuestion(text) {
   const firstWord = text.trim().toLowerCase().split(' ')[0];
   if (questionWords.includes(firstWord)) return true;
   
+  // Check for common question-like formats
+  if (text.toLowerCase().startsWith('how can we') || 
+      text.toLowerCase().startsWith('how do i') ||
+      text.toLowerCase().startsWith('how to')) {
+    return true;
+  }
+  
   // Check for phrases that indicate questions
   const questionPhrases = [
     'i need help', 'help me', 'looking for', 'trying to figure out',
-    'can anyone', 'does anyone', 'is there', 'tell me', 'explain'
+    'can anyone', 'does anyone', 'is there', 'tell me', 'explain',
+    'add labels', 'create a', 'find the', 'access', 'tutorial'
   ];
   
   return questionPhrases.some(phrase => text.toLowerCase().includes(phrase));
 }
-
 /**
  * Store learned Q&A pairs in database
  * @param {Array} qaGroups - Array of Q&A pairs
