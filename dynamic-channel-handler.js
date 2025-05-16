@@ -69,7 +69,7 @@ function extractProgramName(channelName, channelTopic) {
  * @returns {object|null} - Extracted link data or null
  */
 function scanMessageForLinks(message) {
-  if (!message.text) return null;
+  if (!message || !message.text) return null;
   
   const text = message.text.toLowerCase();
   const urlMatches = message.text.match(/(https?:\/\/[^\s<>]+)/g);
@@ -134,6 +134,7 @@ async function getProgramInfoFromChannel(channelId, client) {
     
     const channelName = channelInfo.channel.name || '';
     const channelTopic = channelInfo.channel.topic?.value || '';
+    const isPrivate = channelInfo.channel.is_private || false;
     
     // Extract program name
     const programName = extractProgramName(channelName, channelTopic);
@@ -143,6 +144,7 @@ async function getProgramInfoFromChannel(channelId, client) {
       channelId,
       channelName,
       programName,
+      isPrivate,
       links: {
         recordings: [],
         calendars: [],
@@ -187,7 +189,7 @@ async function getUserProgram(userId, client) {
   }
   
   try {
-    // Get conversations (channels) the user is in
+    // Get conversations (channels) the user is in - include both public and private
     const response = await client.users.conversations({
       user: userId,
       types: "public_channel,private_channel"
@@ -248,6 +250,20 @@ async function scanChannelContent(channelId, client) {
   };
   
   try {
+    // Check if the bot is a member of this channel first
+    try {
+      const channelInfo = await client.conversations.info({ channel: channelId });
+      if (!channelInfo.channel.is_member) {
+        console.log(`Cannot scan channel ${channelId}: Bot is not a member`);
+        channelContentCache.set(channelId, content);
+        return content;
+      }
+    } catch (memberError) {
+      console.error(`Error checking membership for channel ${channelId}:`, memberError);
+      channelContentCache.set(channelId, content);
+      return content;
+    }
+    
     // Get recent messages in the channel
     const result = await client.conversations.history({
       channel: channelId,
@@ -467,26 +483,49 @@ function customizeResponse(baseResponse, context) {
   return baseResponse;
 }
 
-// Periodically scan all known channels (every 4 hours)
-function scheduleChannelScans(client) {
-  const scanInterval = 4 * 60 * 60 * 1000; // 4 hours
-  
-  setInterval(async () => {
-    console.log('Running scheduled channel scans...');
+/**
+ * Periodically scan all known channels (every 4 hours)
+ * @param {object} client - Slack client
+ */
+async function scheduleChannelScans(client) {
+  try {
+    console.log('Starting scheduled channel scan...');
     
-    // Get all cached channels
-    const channelIds = programCache.keys();
+    // Get all public and private channels the bot is in
+    const channelsResult = await client.conversations.list({
+      types: 'public_channel,private_channel',
+      exclude_archived: true,
+      limit: 1000
+    });
     
-    for (const channelId of channelIds) {
+    if (!channelsResult.channels || channelsResult.channels.length === 0) {
+      console.log('No channels found to scan');
+      return;
+    }
+    
+    // Filter channels to only those the bot is a member of
+    const memberChannels = channelsResult.channels.filter(channel => channel.is_member === true);
+    
+    console.log(`Scanning ${memberChannels.length} channels where bot is a member`);
+    
+    // Process each channel where the bot is a member
+    for (const channel of memberChannels) {
       try {
-        await scanChannelContent(channelId, client);
+        await scanChannelContent(channel.id, client);
+        console.log(`Scanned channel: ${channel.name}`);
       } catch (error) {
-        console.error(`Error scanning channel ${channelId}:`, error);
+        console.error(`Error scanning channel ${channel.name}:`, error);
       }
     }
     
-    console.log('Scheduled channel scans complete');
-  }, scanInterval);
+    console.log('Scheduled channel scan complete');
+  } catch (error) {
+    console.error('Error during scheduled channel scan:', error);
+  }
+  
+  // Schedule next scan in 4 hours
+  const scanInterval = 4 * 60 * 60 * 1000; // 4 hours
+  setTimeout(() => scheduleChannelScans(client), scanInterval);
 }
 
 // Export functions
