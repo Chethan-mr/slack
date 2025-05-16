@@ -15,6 +15,7 @@ let isConnected = false;
 
 // Helper function to escape special characters in regex
 function escapeRegExp(string) {
+  if (!string) return '';
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
@@ -93,9 +94,11 @@ async function learnFromChannelHistory(client) {
   let learnedCount = 0;
   
   try {
-    // Get list of all public channels
+    // Get list of all public channels WITH is_member filter
     const channelsResult = await client.conversations.list({
-      types: 'public_channel'
+      types: 'public_channel',
+      exclude_archived: true,
+      limit: 1000
     });
     
     if (!channelsResult.channels || channelsResult.channels.length === 0) {
@@ -103,8 +106,13 @@ async function learnFromChannelHistory(client) {
       return 0;
     }
     
-    // Process each channel
-    for (const channel of channelsResult.channels) {
+    // Filter channels to only those the bot is a member of
+    const memberChannels = channelsResult.channels.filter(channel => channel.is_member === true);
+    
+    console.log(`Found ${memberChannels.length} channels where bot is a member out of ${channelsResult.channels.length} total channels`);
+    
+    // Process only the channels where the bot is a member
+    for (const channel of memberChannels) {
       console.log(`Learning from channel: ${channel.name} (${channel.id})`);
       
       try {
@@ -115,15 +123,22 @@ async function learnFromChannelHistory(client) {
         });
         
         if (!historyResult.messages || historyResult.messages.length === 0) {
+          console.log(`No messages found in channel: ${channel.name}`);
           continue;
         }
+        
+        console.log(`Processing ${historyResult.messages.length} messages from channel: ${channel.name}`);
         
         // Group messages into Q&A pairs
         const qaGroups = identifyQAPairs(historyResult.messages, channel.id, channel.name);
         
+        console.log(`Identified ${qaGroups.length} Q&A pairs in channel: ${channel.name}`);
+        
         // Store learned Q&A pairs
         if (qaGroups.length > 0) {
-          learnedCount += await storeLearnedQA(qaGroups, channel.name);
+          const storedCount = await storeLearnedQA(qaGroups, channel.name);
+          learnedCount += storedCount;
+          console.log(`Stored ${storedCount} Q&A pairs from channel: ${channel.name}`);
         }
       } catch (channelError) {
         console.error(`Error learning from channel ${channel.name}:`, channelError);
@@ -150,13 +165,18 @@ function identifyQAPairs(messages, channelId, channelName) {
   const qaGroups = [];
   let currentGroup = null;
   
+  // Skip if messages array is empty or invalid
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return [];
+  }
+  
   // Sort messages by timestamp (oldest first)
   const sortedMessages = [...messages].sort((a, b) => 
     parseFloat(a.ts) - parseFloat(b.ts)
   );
   
   // Extract program name from channel
-  let programName = channelName;
+  let programName = channelName || 'General';
   // Clean up program name from channel name
   programName = programName
     .replace(/[-_]/g, ' ')
@@ -165,6 +185,9 @@ function identifyQAPairs(messages, channelId, channelName) {
     .join(' ');
   
   for (const message of sortedMessages) {
+    // Skip empty messages
+    if (!message || !message.text) continue;
+    
     // Skip bot messages except for our own bot
     if (message.subtype === 'bot_message' && !message.bot_id?.includes('EnquBuddy')) {
       continue;
@@ -187,7 +210,7 @@ function identifyQAPairs(messages, channelId, channelName) {
     // If we have a current group and this is a potential answer
     else if (currentGroup && 
              (message.bot_id || // Bot answers
-              (message.text && currentGroup.question && message.text.includes(currentGroup.question.substring(0, 10))) || // Quoted reply
+              (message.text && currentGroup.question && message.text.includes(currentGroup.question.substring(0, Math.min(10, currentGroup.question.length)))) || // Quoted reply
               message.thread_ts === currentGroup.ts)) { // Threaded reply
       
       // Add this as an answer to the current question
@@ -254,7 +277,7 @@ async function storeLearnedQA(qaGroups, channelName) {
     if (!group.botAnswer && (!group.answers || group.answers.length < 1)) continue;
     
     // Use bot answer if available, otherwise use the best human answer
-    const answer = group.botAnswer || group.answers[0].text;
+    const answer = group.botAnswer || (group.answers[0] ? group.answers[0].text : null);
     
     // Skip if no valid answer
     if (!answer) continue;
@@ -348,9 +371,14 @@ async function learnFromBotHistory() {
       matched: true
     }).limit(5000).toArray();
     
+    console.log(`Found ${matchedQuestions.length} matched questions in history`);
+    
     for (const qa of matchedQuestions) {
       // Skip if question or response is missing
-      if (!qa.question || !qa.response) continue;
+      if (!qa.question || !qa.response) {
+        console.log('Skipping entry with missing question or response');
+        continue;
+      }
       
       // Create a Q&A entry
       try {
@@ -429,6 +457,7 @@ async function findLearnedAnswer(question, programName) {
   const cachedAnswer = learnedQACache.get(cacheKey);
   
   if (cachedAnswer && cachedAnswer.programName === programName) {
+    console.log('Found answer in cache');
     return {
       answer: cachedAnswer.answer,
       confidence: cachedAnswer.confidence,
@@ -458,6 +487,10 @@ async function findLearnedAnswer(question, programName) {
             sort: { score: { $meta: "textScore" } }
           }
         );
+        
+        if (result) {
+          console.log('Found answer using text search');
+        }
       } catch (textSearchError) {
         console.log('Text search failed, falling back to regex:', textSearchError.message);
         
@@ -467,6 +500,10 @@ async function findLearnedAnswer(question, programName) {
           programName: programName,
           confidence: { $gt: 0.7 }
         });
+        
+        if (result) {
+          console.log('Found answer using regex search');
+        }
       }
       
       if (result && result.answer) {
@@ -492,6 +529,7 @@ async function findLearnedAnswer(question, programName) {
       
       // If no match in program, try general knowledge
       if (programName !== 'General') {
+        console.log('No match in program, trying general knowledge');
         let generalResult;
         
         try {
@@ -521,6 +559,7 @@ async function findLearnedAnswer(question, programName) {
         }
         
         if (generalResult && generalResult.answer) {
+          console.log('Found answer in general knowledge');
           return {
             answer: generalResult.answer,
             confidence: generalResult.confidence * 0.9, // Slightly lower confidence for general knowledge
@@ -528,6 +567,8 @@ async function findLearnedAnswer(question, programName) {
           };
         }
       }
+      
+      console.log('No answer found in database');
     } catch (error) {
       console.error('Error finding learned answer:', error);
     }
