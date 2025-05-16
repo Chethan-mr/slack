@@ -13,6 +13,11 @@ let questionsCollection = null;
 let learnedQACollection = null;
 let isConnected = false;
 
+// Helper function to escape special characters in regex
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Connect to MongoDB
  * @param {string} mongoURI - MongoDB connection string
@@ -33,15 +38,47 @@ async function connectToMongoDB(mongoURI) {
     questionsCollection = db.collection('questions');
     learnedQACollection = db.collection('learned_qa');
     
-    // Create indexes for better performance
-    await learnedQACollection.createIndex({ question: 'text' });
+    // Basic indexes (don't require text search capability)
     await learnedQACollection.createIndex({ programName: 1 });
     await learnedQACollection.createIndex({ confidence: -1 });
+    
+    // Text index will be created by ensureIndexes() function
     
     isConnected = true;
     return true;
   } catch (error) {
     console.error('Error connecting Knowledge Learner to MongoDB:', error);
+    return false;
+  }
+}
+
+/**
+ * Ensure all necessary indexes are created
+ * @returns {Promise<boolean>} - Success status
+ */
+async function ensureIndexes() {
+  if (!isConnected || !learnedQACollection) {
+    console.log('Cannot create indexes: MongoDB not connected');
+    return false;
+  }
+  
+  try {
+    // Create text index with error handling
+    try {
+      await learnedQACollection.createIndex({ question: 'text' });
+      console.log('Text index created successfully');
+    } catch (textIndexError) {
+      console.error('Error creating text index:', textIndexError);
+      console.log('Will use regex-based matching instead of text search');
+    }
+    
+    // Create regular indexes (already done in connectToMongoDB, but ensure they exist)
+    await learnedQACollection.createIndex({ programName: 1 });
+    await learnedQACollection.createIndex({ confidence: -1 });
+    
+    return true;
+  } catch (error) {
+    console.error('Error creating indexes:', error);
     return false;
   }
 }
@@ -129,7 +166,7 @@ function identifyQAPairs(messages, channelId, channelName) {
   
   for (const message of sortedMessages) {
     // Skip bot messages except for our own bot
-    if (message.subtype === 'bot_message' && !message.bot_id.includes('EnquBuddy')) {
+    if (message.subtype === 'bot_message' && !message.bot_id?.includes('EnquBuddy')) {
       continue;
     }
     
@@ -150,7 +187,7 @@ function identifyQAPairs(messages, channelId, channelName) {
     // If we have a current group and this is a potential answer
     else if (currentGroup && 
              (message.bot_id || // Bot answers
-              message.text.includes(currentGroup.question.substring(0, 10)) || // Quoted reply
+              (message.text && currentGroup.question && message.text.includes(currentGroup.question.substring(0, 10))) || // Quoted reply
               message.thread_ts === currentGroup.ts)) { // Threaded reply
       
       // Add this as an answer to the current question
@@ -170,7 +207,7 @@ function identifyQAPairs(messages, channelId, channelName) {
   }
   
   // Filter out groups with no answers
-  return qaGroups.filter(group => group.answers.length > 0);
+  return qaGroups.filter(group => group.answers && group.answers.length > 0);
 }
 
 /**
@@ -214,10 +251,13 @@ async function storeLearnedQA(qaGroups, channelName) {
   
   for (const group of qaGroups) {
     // Skip if there's no bot answer and no clear human answer
-    if (!group.botAnswer && group.answers.length < 1) continue;
+    if (!group.botAnswer && (!group.answers || group.answers.length < 1)) continue;
     
     // Use bot answer if available, otherwise use the best human answer
     const answer = group.botAnswer || group.answers[0].text;
+    
+    // Skip if no valid answer
+    if (!answer) continue;
     
     // Set confidence score
     const confidence = group.confidence || 
@@ -226,10 +266,21 @@ async function storeLearnedQA(qaGroups, channelName) {
     
     try {
       // Check if this Q&A pair already exists
-      const existing = await learnedQACollection.findOne({
-        question: { $text: { $search: group.question } },
-        programName: group.programName
-      });
+      let existing = null;
+      
+      try {
+        // Try text search first
+        existing = await learnedQACollection.findOne({
+          $text: { $search: group.question },
+          programName: group.programName
+        });
+      } catch (textSearchError) {
+        // Fall back to regex search
+        existing = await learnedQACollection.findOne({
+          question: new RegExp(escapeRegExp(group.question.substring(0, 50)), 'i'),
+          programName: group.programName
+        });
+      }
       
       if (existing) {
         // Update existing entry if this one has higher confidence
@@ -298,13 +349,27 @@ async function learnFromBotHistory() {
     }).limit(5000).toArray();
     
     for (const qa of matchedQuestions) {
+      // Skip if question or response is missing
+      if (!qa.question || !qa.response) continue;
+      
       // Create a Q&A entry
       try {
         // Check if this Q&A pair already exists
-        const existing = await learnedQACollection.findOne({
-          question: { $text: { $search: qa.question } },
-          programName: qa.programName || 'General'
-        });
+        let existing;
+        
+        try {
+          // Try text search first
+          existing = await learnedQACollection.findOne({
+            $text: { $search: qa.question },
+            programName: qa.programName || 'General'
+          });
+        } catch (textSearchError) {
+          // Fall back to regex search
+          existing = await learnedQACollection.findOne({
+            question: new RegExp(escapeRegExp(qa.question.substring(0, 50)), 'i'),
+            programName: qa.programName || 'General'
+          });
+        }
         
         if (existing) {
           // Update existing entry
@@ -374,22 +439,35 @@ async function findLearnedAnswer(question, programName) {
   // If not in cache and MongoDB is connected, search database
   if (isConnected && learnedQACollection) {
     try {
-      // Search for similar questions in this program
-      const result = await learnedQACollection.findOne(
-        {
-          $text: { $search: question },
-          programName: programName,
-          confidence: { $gt: 0.7 } // Only use high confidence answers
-        },
-        {
-          projection: {
-            answer: 1,
-            confidence: 1,
-            score: { $meta: "textScore" }
+      let result;
+      
+      try {
+        // Try using text search first
+        result = await learnedQACollection.findOne(
+          {
+            $text: { $search: question },
+            programName: programName,
+            confidence: { $gt: 0.7 } // Only use high confidence answers
           },
-          sort: { score: { $meta: "textScore" } }
-        }
-      );
+          {
+            projection: {
+              answer: 1,
+              confidence: 1,
+              score: { $meta: "textScore" }
+            },
+            sort: { score: { $meta: "textScore" } }
+          }
+        );
+      } catch (textSearchError) {
+        console.log('Text search failed, falling back to regex:', textSearchError.message);
+        
+        // Fall back to regex search if text search fails
+        result = await learnedQACollection.findOne({
+          question: new RegExp(escapeRegExp(question.substring(0, 50)), 'i'),
+          programName: programName,
+          confidence: { $gt: 0.7 }
+        });
+      }
       
       if (result && result.answer) {
         // Add to cache for future use
@@ -414,21 +492,33 @@ async function findLearnedAnswer(question, programName) {
       
       // If no match in program, try general knowledge
       if (programName !== 'General') {
-        const generalResult = await learnedQACollection.findOne(
-          {
-            $text: { $search: question },
-            programName: 'General',
-            confidence: { $gt: 0.8 } // Higher threshold for general knowledge
-          },
-          {
-            projection: {
-              answer: 1,
-              confidence: 1,
-              score: { $meta: "textScore" }
+        let generalResult;
+        
+        try {
+          // Try text search for general knowledge
+          generalResult = await learnedQACollection.findOne(
+            {
+              $text: { $search: question },
+              programName: 'General',
+              confidence: { $gt: 0.8 } // Higher threshold for general knowledge
             },
-            sort: { score: { $meta: "textScore" } }
-          }
-        );
+            {
+              projection: {
+                answer: 1,
+                confidence: 1,
+                score: { $meta: "textScore" }
+              },
+              sort: { score: { $meta: "textScore" } }
+            }
+          );
+        } catch (generalTextError) {
+          // Fall back to regex for general knowledge
+          generalResult = await learnedQACollection.findOne({
+            question: new RegExp(escapeRegExp(question.substring(0, 50)), 'i'),
+            programName: 'General',
+            confidence: { $gt: 0.8 }
+          });
+        }
         
         if (generalResult && generalResult.answer) {
           return {
@@ -469,10 +559,21 @@ async function recordQAPair(question, answer, programName, confidence = 0.9) {
   if (isConnected && learnedQACollection) {
     try {
       // Check if this Q&A pair already exists
-      const existing = await learnedQACollection.findOne({
-        question: { $text: { $search: question } },
-        programName: programName
-      });
+      let existing;
+      
+      try {
+        // Try text search first
+        existing = await learnedQACollection.findOne({
+          $text: { $search: question },
+          programName: programName
+        });
+      } catch (textSearchError) {
+        // Fall back to regex search
+        existing = await learnedQACollection.findOne({
+          question: new RegExp(escapeRegExp(question.substring(0, 50)), 'i'),
+          programName: programName
+        });
+      }
       
       if (existing) {
         // Update existing entry
@@ -516,15 +617,33 @@ function schedulePeriodicLearning(client) {
   // Initial learning
   setTimeout(async () => {
     console.log('Starting initial learning from channels and history...');
-    await learnFromChannelHistory(client);
-    await learnFromBotHistory();
+    try {
+      await learnFromChannelHistory(client);
+    } catch (channelError) {
+      console.error('Error in scheduled channel learning:', channelError);
+    }
+    
+    try {
+      await learnFromBotHistory();
+    } catch (botError) {
+      console.error('Error in scheduled bot history learning:', botError);
+    }
   }, 5 * 60 * 1000); // 5 minutes after startup
   
   // Schedule periodic learning
   setInterval(async () => {
     console.log('Running scheduled learning from channels and history...');
-    await learnFromChannelHistory(client);
-    await learnFromBotHistory();
+    try {
+      await learnFromChannelHistory(client);
+    } catch (channelError) {
+      console.error('Error in scheduled channel learning:', channelError);
+    }
+    
+    try {
+      await learnFromBotHistory();
+    } catch (botError) {
+      console.error('Error in scheduled bot history learning:', botError);
+    }
   }, LEARNING_INTERVAL);
 }
 
@@ -534,5 +653,6 @@ module.exports = {
   learnFromBotHistory,
   findLearnedAnswer,
   recordQAPair,
-  schedulePeriodicLearning
+  schedulePeriodicLearning,
+  ensureIndexes
 };
