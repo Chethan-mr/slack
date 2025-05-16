@@ -266,6 +266,7 @@ function identifyQAPairs(messages, channelId, channelName) {
   // Filter out groups with no answers
   return qaGroups.filter(group => group.answers && group.answers.length > 0);
 }
+
 /**
  * Check if a message is likely a question
  * @param {string} text - Message text
@@ -298,6 +299,7 @@ function isLikelyQuestion(text) {
   
   return questionPhrases.some(phrase => text.toLowerCase().includes(phrase));
 }
+
 /**
  * Store learned Q&A pairs in database
  * @param {Array} qaGroups - Array of Q&A pairs
@@ -376,12 +378,40 @@ async function storeLearnedQA(qaGroups, channelName) {
         storedCount++;
       }
       
+      // Also store the same Q&A in the General program for wider access
+      const existingGeneral = await learnedQACollection.findOne({
+        question: new RegExp(escapeRegExp(group.question.substring(0, 50)), 'i'),
+        programName: 'General'
+      });
+      
+      if (!existingGeneral) {
+        await learnedQACollection.insertOne({
+          question: group.question,
+          answer: answer,
+          programName: 'General',
+          channelName: channelName,
+          confidence: confidence * 0.9, // Slightly lower confidence for general knowledge
+          useCount: 1,
+          createdAt: new Date(),
+          lastUpdated: new Date()
+        });
+        console.log(`Also stored in General program: "${group.question.substring(0, 30)}..."`);
+      }
+      
       // Also add to cache
       const cacheKey = `${group.programName}:${group.question.toLowerCase().substring(0, 30)}`;
       learnedQACache.set(cacheKey, {
         answer: answer,
         confidence: confidence,
         programName: group.programName
+      });
+
+      // Add to General cache as well
+      const generalCacheKey = `General:${group.question.toLowerCase().substring(0, 30)}`;
+      learnedQACache.set(generalCacheKey, {
+        answer: answer,
+        confidence: confidence * 0.9,
+        programName: 'General'
       });
       
     } catch (error) {
@@ -468,6 +498,27 @@ async function learnFromBotHistory() {
             confidence: 0.95,
             programName: qa.programName || 'General'
           });
+          
+          // Also store in General program for broader access if not already there
+          if (qa.programName !== 'General') {
+            const existingGeneral = await learnedQACollection.findOne({
+              question: new RegExp(escapeRegExp(qa.question.substring(0, 50)), 'i'),
+              programName: 'General'
+            });
+            
+            if (!existingGeneral) {
+              await learnedQACollection.insertOne({
+                question: qa.question,
+                answer: qa.response,
+                programName: 'General',
+                confidence: 0.9, // Slightly lower confidence for general knowledge
+                useCount: 1,
+                createdAt: new Date(),
+                lastUpdated: new Date()
+              });
+              console.log(`Also stored bot answer in General program: "${qa.question.substring(0, 30)}..."`);
+            }
+          }
         }
       } catch (error) {
         console.error('Error learning from bot history:', error);
@@ -491,6 +542,8 @@ async function learnFromBotHistory() {
 async function findLearnedAnswer(question, programName) {
   if (!question) return null;
   
+  console.log(`Looking for answer to: "${question}" in program: ${programName}`);
+  
   // Check cache first
   const questionLower = question.toLowerCase();
   const cacheKey = `${programName}:${questionLower.substring(0, 30)}`;
@@ -510,33 +563,80 @@ async function findLearnedAnswer(question, programName) {
     try {
       let result;
       
-      try {
-        // Try using text search first
-        result = await learnedQACollection.findOne(
-          {
-            $text: { $search: question },
-            programName: programName,
-            confidence: { $gt: 0.7 } // Only use high confidence answers
-          },
-          {
-            projection: {
-              answer: 1,
-              confidence: 1,
-              score: { $meta: "textScore" }
-            },
-            sort: { score: { $meta: "textScore" } }
-          }
-        );
+      // First, try a more flexible matching approach 
+      const keyTerms = question.toLowerCase()
+                               .replace(/[^a-z0-9\s]/g, '')
+                               .split(/\s+/)
+                               .filter(term => term.length > 3)
+                               .slice(0, 5);
+      
+      console.log(`Key terms: ${keyTerms.join(', ')}`);
+      
+      if (keyTerms.length > 0) {
+        // Create a more flexible regex pattern
+        const pattern = keyTerms.map(term => `(?=.*${escapeRegExp(term)})`).join('');
+        const flexRegex = new RegExp(pattern, 'i');
+        
+        console.log(`Searching with flexible pattern: ${flexRegex}`);
+        
+        // Try program-specific knowledge first
+        result = await learnedQACollection.findOne({
+          question: flexRegex,
+          programName: programName,
+          confidence: { $gt: 0.7 }
+        });
         
         if (result) {
-          console.log('Found answer using text search');
+          console.log(`Found answer with flexible matching in ${programName}`);
+        } else {
+          // Try general knowledge
+          result = await learnedQACollection.findOne({
+            question: flexRegex,
+            programName: 'General',
+            confidence: { $gt: 0.7 }
+          });
+          
+          if (result) {
+            console.log('Found answer with flexible matching in General knowledge');
+          }
         }
-      } catch (textSearchError) {
-        console.log('Text search failed, falling back to regex:', textSearchError.message);
+      }
+      
+      // If flexible matching didn't work, try text search
+      if (!result) {
+        try {
+          // Try using text search 
+          result = await learnedQACollection.findOne(
+            {
+              $text: { $search: question },
+              programName: programName,
+              confidence: { $gt: 0.7 }
+            },
+            {
+              projection: {
+                answer: 1,
+                confidence: 1,
+                score: { $meta: "textScore" }
+              },
+              sort: { score: { $meta: "textScore" } }
+            }
+          );
+          
+          if (result) {
+            console.log('Found answer using text search');
+          }
+        } catch (textSearchError) {
+          console.log('Text search failed:', textSearchError.message);
+        }
+      }
+      
+      // If still no result, try a simple regex
+      if (!result) {
+        console.log('Trying simple regex match');
         
-        // Fall back to regex search if text search fails
+        // Fall back to regex search
         result = await learnedQACollection.findOne({
-          question: new RegExp(escapeRegExp(question.substring(0, 50)), 'i'),
+          question: new RegExp(escapeRegExp(question.substring(0, 30)), 'i'),
           programName: programName,
           confidence: { $gt: 0.7 }
         });
@@ -546,12 +646,38 @@ async function findLearnedAnswer(question, programName) {
         }
       }
       
+      // If still no result and not general, try General program
+      if (!result && programName !== 'General') {
+        console.log('No match in program, trying General knowledge');
+        
+        // Try the same flexible regex pattern for General program
+        if (keyTerms.length > 0) {
+          const pattern = keyTerms.map(term => `(?=.*${escapeRegExp(term)})`).join('');
+          const flexRegex = new RegExp(pattern, 'i');
+          
+          result = await learnedQACollection.findOne({
+            question: flexRegex,
+            programName: 'General',
+            confidence: { $gt: 0.7 }
+          });
+          
+          if (!result) {
+            // Try simple regex for General program
+            result = await learnedQACollection.findOne({
+              question: new RegExp(escapeRegExp(question.substring(0, 30)), 'i'),
+              programName: 'General',
+              confidence: { $gt: 0.7 }
+            });
+          }
+        }
+      }
+      
       if (result && result.answer) {
         // Add to cache for future use
         learnedQACache.set(cacheKey, {
           answer: result.answer,
           confidence: result.confidence,
-          programName: programName
+          programName: result.programName
         });
         
         // Update usage count
@@ -563,49 +689,9 @@ async function findLearnedAnswer(question, programName) {
         return {
           answer: result.answer,
           confidence: result.confidence,
-          source: 'database'
+          source: 'database',
+          programName: result.programName
         };
-      }
-      
-      // If no match in program, try general knowledge
-      if (programName !== 'General') {
-        console.log('No match in program, trying general knowledge');
-        let generalResult;
-        
-        try {
-          // Try text search for general knowledge
-          generalResult = await learnedQACollection.findOne(
-            {
-              $text: { $search: question },
-              programName: 'General',
-              confidence: { $gt: 0.8 } // Higher threshold for general knowledge
-            },
-            {
-              projection: {
-                answer: 1,
-                confidence: 1,
-                score: { $meta: "textScore" }
-              },
-              sort: { score: { $meta: "textScore" } }
-            }
-          );
-        } catch (generalTextError) {
-          // Fall back to regex for general knowledge
-          generalResult = await learnedQACollection.findOne({
-            question: new RegExp(escapeRegExp(question.substring(0, 50)), 'i'),
-            programName: 'General',
-            confidence: { $gt: 0.8 }
-          });
-        }
-        
-        if (generalResult && generalResult.answer) {
-          console.log('Found answer in general knowledge');
-          return {
-            answer: generalResult.answer,
-            confidence: generalResult.confidence * 0.9, // Slightly lower confidence for general knowledge
-            source: 'database-general'
-          };
-        }
       }
       
       console.log('No answer found in database');
@@ -634,6 +720,14 @@ async function recordQAPair(question, answer, programName, confidence = 0.9) {
     answer: answer,
     confidence: confidence,
     programName: programName
+  });
+  
+  // Also add to General cache
+  const generalCacheKey = `General:${question.toLowerCase().substring(0, 30)}`;
+  learnedQACache.set(generalCacheKey, {
+    answer: answer,
+    confidence: confidence * 0.9, // Slightly lower for general
+    programName: 'General'
   });
   
   // Store in database if connected
@@ -678,6 +772,26 @@ async function recordQAPair(question, answer, programName, confidence = 0.9) {
         });
       }
       
+      // Also store in General program for broader access
+      if (programName !== 'General') {
+        const existingGeneral = await learnedQACollection.findOne({
+          question: new RegExp(escapeRegExp(question.substring(0, 50)), 'i'),
+          programName: 'General'
+        });
+        
+        if (!existingGeneral) {
+          await learnedQACollection.insertOne({
+            question: question,
+            answer: answer,
+            programName: 'General',
+            confidence: confidence * 0.9, // Slightly lower confidence for general knowledge
+            useCount: 1,
+            createdAt: new Date(),
+            lastUpdated: new Date()
+          });
+        }
+      }
+      
       return true;
     } catch (error) {
       console.error('Error recording Q&A pair:', error);
@@ -685,6 +799,82 @@ async function recordQAPair(question, answer, programName, confidence = 0.9) {
   }
   
   return false;
+}
+
+/**
+ * Search knowledge base directly (for debugging)
+ * @param {string} query - Search query
+ * @returns {Promise<object|null>} - Found Q&A pair or null
+ */
+async function searchKnowledgeBase(query) {
+  if (!isConnected || !learnedQACollection) return null;
+  
+  console.log(`Searching knowledge base for: "${query}"`);
+  
+  try {
+    // Search all programs with flexible matching
+    const keyTerms = query.toLowerCase()
+                          .replace(/[^a-z0-9\s]/g, '')
+                          .split(/\s+/)
+                          .filter(term => term.length > 3)
+                          .slice(0, 5);
+    
+    let result = null;
+    
+    if (keyTerms.length > 0) {
+      // Create a more flexible regex pattern
+      const pattern = keyTerms.map(term => `(?=.*${escapeRegExp(term)})`).join('');
+      const flexRegex = new RegExp(pattern, 'i');
+      
+      console.log(`Debug search with pattern: ${flexRegex}`);
+      
+      result = await learnedQACollection.findOne({
+        question: flexRegex
+      });
+    }
+    
+    // If no match with flexible regex, try simple regex
+    if (!result) {
+      result = await learnedQACollection.findOne({
+        question: new RegExp(escapeRegExp(query), 'i')
+      });
+    }
+    
+    if (result) {
+      console.log(`Found matching entry: ${result.question}`);
+      return result;
+    }
+    
+    console.log('No matching entry found');
+    return null;
+  } catch (error) {
+    console.error('Error searching knowledge base:', error);
+    return null;
+  }
+}
+
+/**
+ * Get all Q&A entries that match a search term (for debugging)
+ * @param {string} searchTerm - Term to search for
+ * @returns {Promise<Array>} - Array of matching entries
+ */
+async function debugSearch(searchTerm) {
+  if (!isConnected || !learnedQACollection) return [];
+  
+  try {
+    // Create a simple regex pattern
+    const pattern = new RegExp(escapeRegExp(searchTerm), 'i');
+    
+    // Find all matching entries
+    const results = await learnedQACollection.find({
+      question: pattern
+    }).toArray();
+    
+    return results;
+  } catch (error) {
+    console.error('Error in debug search:', error);
+    return [];
+  }
 }
 
 /**
@@ -735,5 +925,7 @@ module.exports = {
   findLearnedAnswer,
   recordQAPair,
   schedulePeriodicLearning,
-  ensureIndexes
+  ensureIndexes,
+  searchKnowledgeBase,
+  debugSearch
 };
