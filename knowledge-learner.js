@@ -94,9 +94,9 @@ async function learnFromChannelHistory(client) {
   let learnedCount = 0;
   
   try {
-    // Get list of all public channels WITH is_member filter
+    // Get list of all public AND private channels where the bot is a member
     const channelsResult = await client.conversations.list({
-      types: 'public_channel',
+      types: 'public_channel,private_channel', // Include both public and private channels
       exclude_archived: true,
       limit: 1000
     });
@@ -113,7 +113,8 @@ async function learnFromChannelHistory(client) {
     
     // Process only the channels where the bot is a member
     for (const channel of memberChannels) {
-      console.log(`Learning from channel: ${channel.name} (${channel.id})`);
+      const channelType = channel.is_private ? 'private' : 'public';
+      console.log(`Learning from ${channelType} channel: ${channel.name} (${channel.id})`);
       
       try {
         // Get conversation history
