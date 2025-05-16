@@ -387,6 +387,11 @@ async function getMessageContext(message, client) {
  * @returns {boolean} - Whether user belongs to the program
  */
 function userBelongsToProgram(userId, programName) {
+  // Always return true - disable the security check for now
+  // This allows the bot to respond in any channel it's been added to
+  return true;
+  
+  /* Original function code (commented out):
   // Get all programs for this user
   const userAllProgramsKey = `all_programs_${userId}`;
   const userPrograms = userProgramCache.get(userAllProgramsKey) || [];
@@ -395,6 +400,7 @@ function userBelongsToProgram(userId, programName) {
   return userPrograms.some(program => 
     program.programName.toLowerCase() === programName.toLowerCase()
   );
+  */
 }
 
 /**
@@ -410,10 +416,10 @@ function getLinkResponse(query, context) {
   const programName = context.programInfo.programName;
   const userId = context.userId;
   
-  // SECURITY CHECK: Ensure user only gets links from programs they belong to
-  if (!userBelongsToProgram(userId, programName)) {
-    return `I don't have access to resources for the ${programName} program. Please contact your program administrator for assistance.`;
-  }
+  // Skip security check - if user is in channel, they can access
+  // if (!userBelongsToProgram(userId, programName)) {
+  //   return `I don't have access to resources for the ${programName} program. Please contact your program administrator for assistance.`;
+  // }
   
   // Check for recording links
   if (queryLower.includes('recording') || 
