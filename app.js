@@ -279,11 +279,11 @@ app.message(async ({ message, say, client }) => {
       else {
         // CASUAL CONVERSATION PATTERNS
         if (text.match(/\b(hi|hello|hey|greetings|howdy)\b/i)) {
-          response = "Hello! 👋 I'm your learning assistant bot. How can I help you today with the Enqurious Databricks program?";
+          response = "Hello! 👋 I'm your learning assistant bot. How can I help you today ?";
           matched = true;
         }
         else if (text.match(/\b(how are you|how you doing|how's it going|how are things|what's up)\b/i)) {
-          response = "I'm doing well, thanks for asking! I'm here to help with any questions about the Enqurious Databricks program. What can I assist you with today?";
+          response = "I'm doing well, thanks for asking! I'm here to help with any questions . What can I assist you with today?";
           matched = true;
         }
         else if (text.match(/\b(thank|thanks|thx|ty)\b/i)) {
@@ -291,7 +291,7 @@ app.message(async ({ message, say, client }) => {
           matched = true;
         }
         else if (text.match(/\b(who are you|what are you|what do you do|tell me about you)\b/i)) {
-          response = "I'm EnquBuddy, an assistant bot for the Enqurious Client Programs - Databricks course. I can help answer questions about Zoom sessions, recordings, learning modules, and more!";
+          response = "I'm EnquBuddy, an assistant. I can help answer questions";
           matched = true;
         }
         
@@ -455,7 +455,7 @@ app.event('app_mention', async ({ event, say, client }) => {
         console.error('Error finding learned answer for mention:', error);
       }
       
-      let response = "I'm not sure I understand that question. Could you rephrase it or ask about Zoom, ILT sessions, recordings, or the learning portal?";
+      let response = "I'm not sure I understand that question. For further help, please contact @abhilipsha.";
       let matched = false;
       
       if (learnedResponse && learnedResponse.confidence > 0.7) {
