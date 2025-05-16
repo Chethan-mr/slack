@@ -15,6 +15,7 @@ const COLLECTION_NAME = 'questions';
 // MongoDB Client
 let mongoClient = null;
 let questionsCollection = null;
+let learnedQACollection = null;
 let isConnected = false;
 
 // Connect to MongoDB
@@ -196,6 +197,54 @@ app.message(async ({ message, say, client }) => {
       return;
     }
     
+    // DEBUG COMMANDS - search and inspect the knowledge base
+    if (text.startsWith('!debug ')) {
+      // Only allow admin users to use debug commands
+      if (message.user === process.env.ADMIN_USER_ID) {
+        const searchTerm = text.replace('!debug ', '').trim();
+        try {
+          const results = await knowledgeLearner.debugSearch(searchTerm);
+          
+          let debugResponse = `Debug results for "${searchTerm}":\n\n`;
+          
+          if (!results || results.length === 0) {
+            debugResponse += "No matching entries found in the database.";
+          } else {
+            results.forEach((item, index) => {
+              debugResponse += `${index + 1}. Q: ${item.question}\n`;
+              debugResponse += `   A: ${item.answer.substring(0, 100)}${item.answer.length > 100 ? '...' : ''}\n`;
+              debugResponse += `   Program: ${item.programName}, Confidence: ${item.confidence}\n\n`;
+            });
+          }
+          
+          await say(debugResponse);
+        } catch (error) {
+          console.error('Error in debug search:', error);
+          await say("Error during debug search.");
+        }
+        return;
+      } else {
+        await say("Debug commands are only available to administrators.");
+        return;
+      }
+    }
+    
+    if (text.toLowerCase().startsWith('search:')) {
+      const searchTerm = text.substr(7).trim();
+      try {
+        const answer = await knowledgeLearner.searchKnowledgeBase(searchTerm);
+        if (answer) {
+          await say(`Found answer: "${answer.answer.substring(0, 200)}${answer.answer.length > 200 ? '...' : ''}"\nConfidence: ${answer.confidence}\nProgram: ${answer.programName}`);
+        } else {
+          await say(`No answer found for: "${searchTerm}"`);
+        }
+      } catch (error) {
+        console.error('Error searching knowledge base:', error);
+        await say('Error searching the knowledge base.');
+      }
+      return;
+    }
+    
     // ADMIN COMMANDS - only work for specific admin users
     if (text.startsWith('!report') && (message.user === process.env.ADMIN_USER_ID)) {
       const reportType = text.split(' ')[1]?.toLowerCase() || 'frequent';
@@ -250,7 +299,8 @@ app.message(async ({ message, say, client }) => {
       }
     }
     
-    // Check for learned answers from previous questions
+    // Check for learned answers from previous questions FIRST
+    console.log(`Checking for learned answer in program: ${programName}`);
     let learnedResponse = null;
     try {
       learnedResponse = await knowledgeLearner.findLearnedAnswer(text, programName);
@@ -260,6 +310,7 @@ app.message(async ({ message, say, client }) => {
     
     if (learnedResponse && learnedResponse.confidence > 0.7) {
       // Use the learned answer
+      console.log(`Using learned answer with confidence ${learnedResponse.confidence}`);
       response = learnedResponse.answer;
       matched = true;
       
@@ -270,20 +321,23 @@ app.message(async ({ message, say, client }) => {
     }
     // If no learned answer, check for resource links
     else if (context.programInfo) {
+      console.log('No learned answer found, checking for resource links');
       const linkResponse = channelHandler.getLinkResponse(text, context);
       
       if (linkResponse) {
+        console.log('Found link response');
         response = linkResponse;
         matched = true;
       }
       else {
+        console.log('No link response found, checking patterns');
         // CASUAL CONVERSATION PATTERNS
         if (text.match(/\b(hi|hello|hey|greetings|howdy)\b/i)) {
-          response = "Hello! 👋 I'm your learning assistant bot. How can I help you today ?";
+          response = "Hello! 👋 I'm your learning assistant bot. How can I help you today with the Enqurious Databricks program?";
           matched = true;
         }
         else if (text.match(/\b(how are you|how you doing|how's it going|how are things|what's up)\b/i)) {
-          response = "I'm doing well, thanks for asking! I'm here to help with any questions . What can I assist you with today?";
+          response = "I'm doing well, thanks for asking! I'm here to help with any questions about the Enqurious Databricks program. What can I assist you with today?";
           matched = true;
         }
         else if (text.match(/\b(thank|thanks|thx|ty)\b/i)) {
@@ -291,7 +345,7 @@ app.message(async ({ message, say, client }) => {
           matched = true;
         }
         else if (text.match(/\b(who are you|what are you|what do you do|tell me about you)\b/i)) {
-          response = "I'm EnquBuddy, an assistant. I can help answer questions";
+          response = "I'm EnquBuddy, an assistant bot for the Enqurious Client Programs - Databricks course. I can help answer questions about Zoom sessions, recordings, learning modules, and more!";
           matched = true;
         }
         
@@ -387,15 +441,21 @@ app.message(async ({ message, say, client }) => {
     if (isConnected) {
       try {
         // Get user info for better logging
-        const userInfo = await client.users.info({ user: message.user });
-        const username = userInfo.user.name || userInfo.user.real_name || 'unknown';
+        let username = 'unknown';
+        try {
+          const userInfo = await client.users.info({ user: message.user });
+          username = userInfo.user?.name || userInfo.user?.real_name || 'unknown';
+        } catch (userInfoError) {
+          console.log(`Could not get user info, using user ID: ${message.user}`);
+          username = message.user || 'unknown';
+        }
         
         // Get channel info
         let channelName = 'direct-message';
         if (message.channel.startsWith('C')) {
           try {
             const channelInfo = await client.conversations.info({ channel: message.channel });
-            channelName = channelInfo.channel.name || 'unknown-channel';
+            channelName = channelInfo.channel?.name || 'unknown-channel';
           } catch (channelError) {
             console.error('Error getting channel info:', channelError);
           }
@@ -447,7 +507,7 @@ app.event('app_mention', async ({ event, say, client }) => {
       
       const programName = context.programInfo?.programName || 'General';
       
-      // Check for learned answers
+      // Check for learned answers first
       let learnedResponse = null;
       try {
         learnedResponse = await knowledgeLearner.findLearnedAnswer(text, programName);
@@ -455,11 +515,12 @@ app.event('app_mention', async ({ event, say, client }) => {
         console.error('Error finding learned answer for mention:', error);
       }
       
-      let response = "I'm not sure I understand that question. For further help, please contact @abhilipsha.";
+      let response = "I'm not sure I understand that question. Could you rephrase it or ask about Zoom, ILT sessions, recordings, or the learning portal?";
       let matched = false;
       
       if (learnedResponse && learnedResponse.confidence > 0.7) {
         // Use the learned answer
+        console.log(`Using learned answer for mention with confidence ${learnedResponse.confidence}`);
         response = learnedResponse.answer;
         matched = true;
         
@@ -471,15 +532,17 @@ app.event('app_mention', async ({ event, say, client }) => {
       else {
         // If no learned answer, check for resource links
         if (context.programInfo) {
+          console.log('No learned answer found for mention, checking for resource links');
           const linkResponse = channelHandler.getLinkResponse(text, context);
           
           if (linkResponse) {
+            console.log('Found link response for mention');
             response = linkResponse;
             matched = true;
           }
           else {
+            console.log('No link response found for mention, checking patterns');
             // Use existing pattern matching logic
-            // This is simplified - ideally you would refactor the pattern matching into a separate function
             if (text.toLowerCase().includes('zoom') && text.toLowerCase().includes('login')) {
               response = "If you're having trouble logging into Zoom, double-check your credentials, reset your password if necessary, and ensure you're using the correct email associated with your account.";
               matched = true;
@@ -498,13 +561,20 @@ app.event('app_mention', async ({ event, say, client }) => {
       // Log to MongoDB if connected
       if (isConnected) {
         try {
-          const userInfo = await client.users.info({ user: event.user });
-          const username = userInfo.user.name || userInfo.user.real_name || 'unknown';
+          // Get user info for better logging
+          let username = 'unknown';
+          try {
+            const userInfo = await client.users.info({ user: event.user });
+            username = userInfo.user?.name || userInfo.user?.real_name || 'unknown';
+          } catch (userInfoError) {
+            console.log(`Could not get user info, using user ID: ${event.user}`);
+            username = event.user || 'unknown';
+          }
           
           let channelName = 'unknown-channel';
           try {
             const channelInfo = await client.conversations.info({ channel: event.channel });
-            channelName = channelInfo.channel.name || 'unknown-channel';
+            channelName = channelInfo.channel?.name || 'unknown-channel';
           } catch (channelError) {
             console.error('Error getting channel info:', channelError);
           }
@@ -703,6 +773,11 @@ const PORT = process.env.PORT || 3000;
 // Start the Slack app
 (async () => {
   try {
+    // Add unhandled rejection handler for debugging
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    });
+    
     // First try to connect to MongoDB
     const dbConnected = await connectToMongoDB();
     if (dbConnected) {
