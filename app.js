@@ -406,6 +406,59 @@ app.message(async ({ message, say, client }) => {
           response = "Hello! 👋 I'm your learning assistant bot. How can I help you today?";
           matched = true;
         }
+          // ZOOM PATTERNS (put these EARLY in your pattern matching, before greeting patterns)
+
+// Zoom join issues
+else if ((text.includes('unable') && text.includes('join') && text.includes('zoom')) ||
+         (text.includes('cannot') && text.includes('join') && text.includes('zoom')) ||
+         (text.includes('can\'t') && text.includes('join') && text.includes('zoom')) ||
+         (text.includes('trouble') && text.includes('join') && text.includes('zoom')) ||
+         (text.includes('problem') && text.includes('join') && text.includes('zoom'))) {
+  response = "If you're having trouble joining a Zoom meeting, try these steps:\n1. Make sure you have a stable internet connection\n2. Try refreshing the meeting link or copying it to your browser\n3. Download the Zoom app from zoom.us/download if you haven't already\n4. Check if you need to enter a meeting passcode\n5. Contact the meeting organizer if the issue persists.";
+  matched = true;
+}
+
+// Zoom login issues  
+else if ((text.includes('zoom') && (text.includes('login') || text.includes('log in') || text.includes('signin') || text.includes('sign in'))) ||
+         (text.includes('login') && text.includes('zoom')) ||
+         (text.includes('unable') && text.includes('login') && text.includes('zoom'))) {
+  response = "If you're having trouble logging into Zoom, double-check your credentials, reset your password if necessary, and ensure you're using the correct email associated with your account.";
+  matched = true;
+}
+
+// Zoom registration
+else if ((text.includes('register') && text.includes('zoom')) ||
+         (text.includes('registration') && text.includes('zoom')) ||
+         (text.includes('create') && text.includes('zoom') && text.includes('account')) ||
+         (text.includes('sign up') && text.includes('zoom'))) {
+  response = "To register for Zoom:\n1. Go to zoom.us/signup\n2. Enter your work email address\n3. Check your email for a confirmation link\n4. Follow the setup instructions\n5. Use the same email address that was provided for the course to ensure proper access to meetings.";
+  matched = true;
+}
+
+// Q1: Join Zoom using calendar link
+else if ((text.includes('join') && text.includes('zoom') && text.includes('calendar')) ||
+         (text.includes('calendar') && text.includes('zoom') && text.includes('link')) ||
+         (text.includes('how') && text.includes('join') && text.includes('zoom'))) {
+  response = "Open the calendar event on your device and click the Zoom meeting link. It will either open the Zoom app or prompt you to download it if you don't have it installed. You can also join via your browser if you prefer.";
+  matched = true;
+}
+
+// Q2: Zoom link doesn't work
+else if ((text.includes('zoom') && text.includes('link') && (text.includes('doesn\'t') || text.includes('not') || text.includes('won\'t'))) ||
+         (text.includes('zoom') && text.includes('link') && text.includes('work')) ||
+         (text.includes('zoom') && text.includes('broken'))) {
+  response = "Try copying and pasting the full Zoom link into your browser's address bar. If you don't have the Zoom app installed, download it from zoom.us/download for the best experience.";
+  matched = true;
+}
+
+// General Zoom troubleshooting
+else if ((text.includes('zoom') && (text.includes('issue') || text.includes('problem') || text.includes('trouble'))) ||
+         (text.includes('zoom') && text.includes('not') && text.includes('working'))) {
+  response = "For Zoom issues, try these general troubleshooting steps:\n1. Check your internet connection\n2. Restart the Zoom app or refresh your browser\n3. Make sure you're using the latest version of Zoom\n4. Try joining from a different device or browser\n5. Contact your meeting organizer if problems persist.";
+  matched = true;
+}
+
+// ... continue with your other Zoom patterns
         else if (text.match(/\b(how are you|how you doing|how's it going|how are things|what's up)\b/i)) {
           response = "I'm doing well, thanks for asking! I'm here to help with any questions. What can I assist you with today?";
           matched = true;
