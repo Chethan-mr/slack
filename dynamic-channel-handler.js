@@ -481,6 +481,15 @@ function customizeResponse(baseResponse, context) {
   
   const programName = context.programInfo.programName;
   
+  // Don't customize greetings and common responses to avoid duplication
+  if (baseResponse.includes("I'm your learning assistant bot") || 
+      baseResponse.includes("You're welcome!") ||
+      baseResponse.includes("I'm EnquBuddy") ||
+      baseResponse.includes("Hello!") ||
+      baseResponse.includes("Thanks for asking!")) {
+    return baseResponse;
+  }
+  
   // Add program name to the response if it doesn't already have it
   if (!baseResponse.includes(programName)) {
     return `${baseResponse}\n\nI'm your assistant for the ${programName} program. Let me know if you need anything else!`;
