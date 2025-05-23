@@ -402,7 +402,7 @@ app.message(async ({ message, say, client }) => {
       // If no link response, check patterns
       if (!matched) {
         // CASUAL CONVERSATION PATTERNS
-        if (text.match(/^(hi|hello|hey|greetings|howdy)(\s|$)/i)) {
+        if (text.match(/^(hi|hello|hey|greetings|howdy)$|^(hi|hello|hey|greetings|howdy)\s+(there|bot|enqubuddy)$/i)) {
           response = "Hello! 👋 I'm your learning assistant bot. How can I help you today?";
           matched = true;
         }
