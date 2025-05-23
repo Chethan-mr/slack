@@ -2,7 +2,6 @@ const { App } = require('@slack/bolt');
 const dotenv = require('dotenv');
 const { MongoClient } = require('mongodb');
 const knowledgeLearner = require('./knowledge-learner');
-const channelHandler = require('./dynamic-channel-handler');
 
 // Load environment variables
 dotenv.config();
@@ -17,6 +16,64 @@ let mongoClient = null;
 let questionsCollection = null;
 let learnedQACollection = null;
 let isConnected = false;
+
+// Simple channel handler replacement (since dynamic-channel-handler wasn't provided)
+const channelHandler = {
+  async getMessageContext(message, client) {
+    try {
+      let programName = 'General';
+      let channelName = 'direct-message';
+      
+      // Get channel info if it's a channel message
+      if (message.channel && message.channel.startsWith('C')) {
+        try {
+          const channelInfo = await client.conversations.info({ channel: message.channel });
+          channelName = channelInfo.channel?.name || 'unknown-channel';
+          
+          // Extract program name from channel name
+          programName = channelName
+            .replace(/[-_]/g, ' ')
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
+        } catch (error) {
+          console.error('Error getting channel info:', error);
+        }
+      }
+      
+      return {
+        programInfo: {
+          programName: programName,
+          channelName: channelName
+        }
+      };
+    } catch (error) {
+      console.error('Error getting message context:', error);
+      return {
+        programInfo: {
+          programName: 'General',
+          channelName: 'unknown'
+        }
+      };
+    }
+  },
+  
+  getLinkResponse(text, context) {
+    // Simple link response handler - can be expanded based on your needs
+    if (text.includes('portal') || text.includes('learning')) {
+      return "You can access the learning portal at: https://www.tredence.enqurious.com/auth/login";
+    }
+    if (text.includes('calendar') && text.includes('learning')) {
+      return "You can check the Learning calendar here: https://docs.google.com/spreadsheets/d/11kw1hvG5dLX9a6GwRd1UF_Mq9ivgCJvr-_2mtd6Z7OQ/edit?gid=0#gid=0";
+    }
+    return null;
+  },
+  
+  scheduleChannelScans(client) {
+    // Placeholder for channel scanning functionality
+    console.log('Channel scanning scheduled (placeholder)');
+  }
+};
 
 // Connect to MongoDB
 async function connectToMongoDB() {
@@ -40,6 +97,7 @@ async function connectToMongoDB() {
     await questionsCollection.createIndex({ timestamp: -1 });
     await questionsCollection.createIndex({ question: 'text' });
     await questionsCollection.createIndex({ userId: 1 });
+    await questionsCollection.createIndex({ programName: 1 });
     
     // Connect knowledge learner to MongoDB
     await knowledgeLearner.connectToMongoDB(MONGODB_URI);
@@ -170,7 +228,7 @@ async function pingDatabase() {
 
 // Function to add predefined Q&A pairs to the knowledge base
 async function addPredefinedQAs() {
-  const zoomQAs = [
+  const predefinedQAs = [
     {
       question: "How do I join the Zoom meeting using the calendar link?",
       answer: "Open the calendar event on your device and click the Zoom meeting link. It will either open the Zoom app or prompt you to download it if you don't have it installed. You can also join via your browser if you prefer."
@@ -219,7 +277,7 @@ async function addPredefinedQAs() {
 
   console.log('Adding predefined Q&A pairs to knowledge base...');
   
-  for (const qa of zoomQAs) {
+  for (const qa of predefinedQAs) {
     try {
       // Add to General knowledge base with high confidence
       await knowledgeLearner.recordQAPair(qa.question, qa.answer, 'General', 0.95);
@@ -235,6 +293,18 @@ async function addPredefinedQAs() {
   }
   
   console.log('Finished adding predefined Q&A pairs');
+}
+
+// Check if text matches a pattern
+function matchesPattern(text, patterns) {
+  return patterns.some(pattern => {
+    if (typeof pattern === 'string') {
+      return text.includes(pattern);
+    } else if (pattern instanceof RegExp) {
+      return pattern.test(text);
+    }
+    return false;
+  });
 }
 
 // Initialize the Slack app
@@ -406,59 +476,6 @@ app.message(async ({ message, say, client }) => {
           response = "Hello! 👋 I'm your learning assistant bot. How can I help you today?";
           matched = true;
         }
-          // ZOOM PATTERNS (put these EARLY in your pattern matching, before greeting patterns)
-
-// Zoom join issues
-else if ((text.includes('unable') && text.includes('join') && text.includes('zoom')) ||
-         (text.includes('cannot') && text.includes('join') && text.includes('zoom')) ||
-         (text.includes('can\'t') && text.includes('join') && text.includes('zoom')) ||
-         (text.includes('trouble') && text.includes('join') && text.includes('zoom')) ||
-         (text.includes('problem') && text.includes('join') && text.includes('zoom'))) {
-  response = "If you're having trouble joining a Zoom meeting, try these steps:\n1. Make sure you have a stable internet connection\n2. Try refreshing the meeting link or copying it to your browser\n3. Download the Zoom app from zoom.us/download if you haven't already\n4. Check if you need to enter a meeting passcode\n5. Contact the meeting organizer if the issue persists.";
-  matched = true;
-}
-
-// Zoom login issues  
-else if ((text.includes('zoom') && (text.includes('login') || text.includes('log in') || text.includes('signin') || text.includes('sign in'))) ||
-         (text.includes('login') && text.includes('zoom')) ||
-         (text.includes('unable') && text.includes('login') && text.includes('zoom'))) {
-  response = "If you're having trouble logging into Zoom, double-check your credentials, reset your password if necessary, and ensure you're using the correct email associated with your account.";
-  matched = true;
-}
-
-// Zoom registration
-else if ((text.includes('register') && text.includes('zoom')) ||
-         (text.includes('registration') && text.includes('zoom')) ||
-         (text.includes('create') && text.includes('zoom') && text.includes('account')) ||
-         (text.includes('sign up') && text.includes('zoom'))) {
-  response = "To register for Zoom:\n1. Go to zoom.us/signup\n2. Enter your work email address\n3. Check your email for a confirmation link\n4. Follow the setup instructions\n5. Use the same email address that was provided for the course to ensure proper access to meetings.";
-  matched = true;
-}
-
-// Q1: Join Zoom using calendar link
-else if ((text.includes('join') && text.includes('zoom') && text.includes('calendar')) ||
-         (text.includes('calendar') && text.includes('zoom') && text.includes('link')) ||
-         (text.includes('how') && text.includes('join') && text.includes('zoom'))) {
-  response = "Open the calendar event on your device and click the Zoom meeting link. It will either open the Zoom app or prompt you to download it if you don't have it installed. You can also join via your browser if you prefer.";
-  matched = true;
-}
-
-// Q2: Zoom link doesn't work
-else if ((text.includes('zoom') && text.includes('link') && (text.includes('doesn\'t') || text.includes('not') || text.includes('won\'t'))) ||
-         (text.includes('zoom') && text.includes('link') && text.includes('work')) ||
-         (text.includes('zoom') && text.includes('broken'))) {
-  response = "Try copying and pasting the full Zoom link into your browser's address bar. If you don't have the Zoom app installed, download it from zoom.us/download for the best experience.";
-  matched = true;
-}
-
-// General Zoom troubleshooting
-else if ((text.includes('zoom') && (text.includes('issue') || text.includes('problem') || text.includes('trouble'))) ||
-         (text.includes('zoom') && text.includes('not') && text.includes('working'))) {
-  response = "For Zoom issues, try these general troubleshooting steps:\n1. Check your internet connection\n2. Restart the Zoom app or refresh your browser\n3. Make sure you're using the latest version of Zoom\n4. Try joining from a different device or browser\n5. Contact your meeting organizer if problems persist.";
-  matched = true;
-}
-
-// ... continue with your other Zoom patterns
         else if (text.match(/\b(how are you|how you doing|how's it going|how are things|what's up)\b/i)) {
           response = "I'm doing well, thanks for asking! I'm here to help with any questions. What can I assist you with today?";
           matched = true;
@@ -472,188 +489,216 @@ else if ((text.includes('zoom') && (text.includes('issue') || text.includes('pro
           matched = true;
         }
         
-        // ENHANCED ZOOM PATTERNS WITH FLEXIBLE KEYWORD MATCHING
+        // ZOOM PATTERNS - Organized and comprehensive
+        
+        // Zoom join issues
+        else if (matchesPattern(text, [
+          'unable to join zoom', 'cannot join zoom', "can't join zoom", 
+          'trouble joining zoom', 'problem joining zoom', 'zoom join issue'
+        ])) {
+          response = "If you're having trouble joining a Zoom meeting, try these steps:\n1. Make sure you have a stable internet connection\n2. Try refreshing the meeting link or copying it to your browser\n3. Download the Zoom app from zoom.us/download if you haven't already\n4. Check if you need to enter a meeting passcode\n5. Contact the meeting organizer if the issue persists.";
+          matched = true;
+        }
         
         // Q1: Join Zoom using calendar link
-        else if ((text.includes('join') && text.includes('zoom') && text.includes('calendar')) ||
-                 (text.includes('calendar') && text.includes('zoom') && text.includes('link')) ||
-                 (text.includes('how') && text.includes('join') && text.includes('zoom'))) {
+        else if (matchesPattern(text, [
+          'join zoom calendar', 'calendar zoom link', 'how to join zoom'
+        ])) {
           response = "Open the calendar event on your device and click the Zoom meeting link. It will either open the Zoom app or prompt you to download it if you don't have it installed. You can also join via your browser if you prefer.";
           matched = true;
         }
         
         // Q2: Zoom link doesn't work
-        else if ((text.includes('zoom') && text.includes('link') && (text.includes('doesn\'t') || text.includes('not') || text.includes('won\'t'))) ||
-                 (text.includes('zoom') && text.includes('link') && text.includes('work')) ||
-                 (text.includes('zoom') && text.includes('broken'))) {
+        else if (matchesPattern(text, [
+          'zoom link doesn\'t work', 'zoom link not working', 'zoom link broken', 'zoom link won\'t open'
+        ])) {
           response = "Try copying and pasting the full Zoom link into your browser's address bar. If you don't have the Zoom app installed, download it from zoom.us/download for the best experience.";
           matched = true;
         }
         
         // Q3: Join Zoom from phone/tablet
-        else if ((text.includes('join') && text.includes('zoom') && (text.includes('phone') || text.includes('mobile') || text.includes('tablet'))) ||
-                 (text.includes('zoom') && text.includes('mobile')) ||
-                 (text.includes('zoom') && text.includes('phone'))) {
+        else if (matchesPattern(text, [
+          'join zoom phone', 'zoom mobile', 'zoom tablet', 'zoom on phone'
+        ])) {
           response = "Yes! Install the Zoom app on your iOS or Android device, then click the calendar link to join the meeting.";
           matched = true;
         }
         
         // Q4: Need Zoom account
-        else if ((text.includes('need') && text.includes('zoom') && text.includes('account')) ||
-                 (text.includes('zoom') && text.includes('account') && text.includes('required')) ||
-                 (text.includes('do') && text.includes('i') && text.includes('need') && text.includes('zoom'))) {
+        else if (matchesPattern(text, [
+          'need zoom account', 'zoom account required', 'do i need zoom'
+        ])) {
           response = "No, you don't need a Zoom account to join most meetings. Just click the link and enter your name when prompted.";
           matched = true;
         }
         
         // Q5: Meeting passcode
-        else if ((text.includes('meeting') && text.includes('passcode')) ||
-                 (text.includes('zoom') && text.includes('passcode')) ||
-                 (text.includes('passcode') && text.includes('required'))) {
+        else if (matchesPattern(text, [
+          'meeting passcode', 'zoom passcode', 'passcode required'
+        ])) {
           response = "The passcode will be included in the calendar event description. Enter it when Zoom asks for it.";
           matched = true;
         }
         
         // Q6: Test audio/video
-        else if ((text.includes('test') && (text.includes('audio') || text.includes('video'))) ||
-                 (text.includes('check') && (text.includes('microphone') || text.includes('camera'))) ||
-                 (text.includes('test') && text.includes('zoom'))) {
+        else if (matchesPattern(text, [
+          'test audio', 'test video', 'test microphone', 'test camera', 'test zoom'
+        ])) {
           response = "When you open the Zoom link, you can test your microphone and camera on the preview screen before joining the meeting.";
           matched = true;
         }
         
         // Q7: Can't hear or see
-        else if ((text.includes('can\'t') && (text.includes('hear') || text.includes('see'))) ||
-                 (text.includes('no') && (text.includes('audio') || text.includes('video'))) ||
-                 (text.includes('muted') || text.includes('sound'))) {
+        else if (matchesPattern(text, [
+          "can't hear", "can't see", 'no audio', 'no video', 'muted', 'no sound'
+        ])) {
           response = "Check if your audio is muted or your video is turned off. Also, verify your device's volume and permissions for Zoom to access your microphone and camera.";
           matched = true;
         }
         
         // Q8: Join late or rejoin
-        else if ((text.includes('join') && text.includes('late')) ||
-                 (text.includes('accidentally') && text.includes('leave')) ||
-                 (text.includes('rejoin') && text.includes('meeting'))) {
+        else if (matchesPattern(text, [
+          'join late', 'accidentally leave', 'rejoin meeting'
+        ])) {
           response = "You can rejoin anytime by clicking the calendar link again.";
           matched = true;
         }
         
         // Q9: Web browser instead of app
-        else if ((text.includes('browser') && text.includes('zoom')) ||
-                 (text.includes('web') && text.includes('browser')) ||
-                 (text.includes('browser') && text.includes('instead'))) {
+        else if (matchesPattern(text, [
+          'browser zoom', 'web browser', 'join from browser'
+        ])) {
           response = "Yes, when prompted to open the Zoom app, you can select the option to join from your browser instead.";
           matched = true;
         }
         
         // Q10: Technical issues contact
-        else if ((text.includes('technical') && text.includes('issues')) ||
-                 (text.includes('zoom') && text.includes('support')) ||
-                 (text.includes('who') && text.includes('contact') && text.includes('technical'))) {
+        else if (matchesPattern(text, [
+          'technical issues', 'zoom support', 'who to contact technical'
+        ])) {
           response = "Contact the meeting organizer or your IT support for assistance.";
           matched = true;
         }
         
-        // EXISTING ZOOM PATTERNS (for compatibility)
-        else if ((text.includes('zoom') && (text.includes('login') || text.includes('log in') || text.includes('signin') || text.includes('sign in') || text.includes('unable') || text.includes('cannot') || text.includes('can\'t'))) ||
-                 (text.includes('login') && text.includes('zoom')) ||
-                 (text.includes('unable') && text.includes('zoom'))) {
+        // Zoom login issues  
+        else if (matchesPattern(text, [
+          'zoom login', 'zoom log in', 'zoom signin', 'unable login zoom'
+        ])) {
           response = "If you're having trouble logging into Zoom, double-check your credentials, reset your password if necessary, and ensure you're using the correct email associated with your account.";
           matched = true;
         }
-        else if ((text.includes('zoom') && text.includes('join') && text.includes('meeting')) ||
-                 (text.includes('zoom') && text.includes('access') && text.includes('session'))) {
-          response = "To join the Zoom session, make sure you have created a Zoom account using your official email, verified it, and clicked the meeting link provided.";
+        
+        // Zoom registration
+        else if (matchesPattern(text, [
+          'register zoom', 'zoom registration', 'create zoom account', 'sign up zoom'
+        ])) {
+          response = "To register for Zoom:\n1. Go to zoom.us/signup\n2. Enter your work email address\n3. Check your email for a confirmation link\n4. Follow the setup instructions\n5. Use the same email address that was provided for the course to ensure proper access to meetings.";
           matched = true;
         }
-        else if (text.includes('zoom') && text.includes('email')) {
-          response = "It's recommended to use your official email for attendance tracking and access to recordings. If you want to change your Zoom email, log into your Zoom account settings and update your email address. Make sure to verify the new email.";
-          matched = true;
-        }
-        else if (text.includes('authorized') && text.includes('registrants')) {
-          response = "If you see an error message like 'This meeting is for authorized registrants only,' confirm that you're using the correct email and that it matches your registration.";
-          matched = true;
-        }
-        else if ((text.includes('connectivity') || text.includes('connection') || text.includes('technical')) && text.includes('zoom')) {
-          response = "If you experience connectivity issues during a Zoom session, check your internet connection and try rejoining the meeting. If issues persist, you may need to switch to a different network. For immediate assistance, reach out in the Slack group.";
-          matched = true;
-        }
-        else if (text === 'zoom' || text === 'about zoom') {
-          response = "Zoom is the video conferencing platform we use for our interactive sessions. I can help with joining meetings, troubleshooting issues, accessing recordings, or any other Zoom-related questions. What specific help do you need?";
+        
+        // General Zoom troubleshooting
+        else if (matchesPattern(text, [
+          'zoom issue', 'zoom problem', 'zoom trouble', 'zoom not working'
+        ])) {
+          response = "For Zoom issues, try these general troubleshooting steps:\n1. Check your internet connection\n2. Restart the Zoom app or refresh your browser\n3. Make sure you're using the latest version of Zoom\n4. Try joining from a different device or browser\n5. Contact your meeting organizer if problems persist.";
           matched = true;
         }
         
         // RECORDING RELATED PATTERNS
-        else if (text.includes('recording') && (text.includes('where') || text.includes('how') || text.includes('access') || text.includes('find') || text.includes('view') || text.includes('watch'))) {
+        else if (matchesPattern(text, [
+          'recording where', 'recording how', 'recording access', 'recording find', 'recording view', 'recording watch'
+        ])) {
           response = "Meeting recordings are usually uploaded to a shared drive after the session. Check the Slack Canvas Bookmarks for the link to the drive. Recordings typically take 1-2 days to be uploaded.";
           matched = true;
         }
-        else if (text.includes('recording') && (text.includes('today') || text.includes('recent') || text.includes('latest') || text.includes('yesterday') || text.includes('this week'))) {
+        else if (matchesPattern(text, [
+          'recording today', 'recording recent', 'recording latest', 'recording yesterday', 'recording this week'
+        ])) {
           response = "Session recordings usually take 1-2 days to be uploaded. If you still can't find a recent recording after 2 days, please inform your mentor or drop a message in the Slack group.";
           matched = true;
         }
         
         // LEARNING & MODULES PATTERNS
-        else if ((text.includes('learning') || text.includes('module') || text.includes('self-paced') || text.includes('self paced')) && (text.includes('access') || text.includes('find') || text.includes('where') || text.includes('how'))) {
+        else if (matchesPattern(text, [
+          'learning access', 'module access', 'self-paced access', 'learning find', 'module find'
+        ])) {
           response = "You can access self-paced modules by logging into the Enqurious learning portal here: https://www.tredence.enqurious.com/auth/login?redirect_uri=/. Simply click on a topic to access its content and start learning.";
           matched = true;
         }
-        else if ((text.includes('complete') || text.includes('finish') || text.includes('time')) && (text.includes('module') || text.includes('self-paced') || text.includes('self paced'))) {
+        else if (matchesPattern(text, [
+          'complete module', 'finish module', 'module time', 'self-paced time'
+        ])) {
           response = "No, you don't have to complete self-paced modules within the given time. The time mentioned is just for your reference. You can complete the modules at your own pace.";
           matched = true;
         }
-        else if ((text.includes('what') || text.includes('mean')) && (text.includes('ilt') || text.includes('learning') || text.includes('assessment'))) {
+        else if (matchesPattern(text, [
+          'what ilt', 'what learning', 'what assessment', 'mean ilt'
+        ])) {
           response = "Here's what each term in the Learning Calendar means:\n1. Learning: Self-study modules available on the Enqurious learning portal\n2. ILT (Instructor-Led Training): Live sessions conducted by mentors on Zoom where you can ask questions, discuss problems, and gain deeper insights\n3. Assessment: Mock tests to be attempted at the end of the program";
           matched = true;
         }
         
         // LABELS PATTERN
-        else if ((text.includes('add') && text.includes('labels')) || 
-                 (text.includes('create') && text.includes('label')) ||
-                 (text.includes('labels') && text.includes('program'))) {
+        else if (matchesPattern(text, [
+          'add labels', 'create label', 'labels program'
+        ])) {
           response = "To add a label for a new program, follow these steps:\n1. On the extreme left of your screen, locate and click on the 'Label' tab.\n2. Once you're in the label section, click on the 'Create Label' button.\n3. Enter the desired name for the new label based on the program's requirements.\n4. After entering the label name, click 'Create' to apply the new label.";
           matched = true;
         }
         
         // DEADLINE & ASSESSMENT PATTERNS
-        else if ((text.includes('miss') || text.includes('extend') || text.includes('extension') || text.includes('deadline')) && (text.includes('practice') || text.includes('assignment') || text.includes('submission') || text.includes('test'))) {
+        else if (matchesPattern(text, [
+          'miss deadline', 'extend deadline', 'deadline extension', 'practice assignment deadline'
+        ])) {
           response = "Generally, deadlines are strict, but you can ask if extensions are possible by contacting the program coordinator. Note that for mock tests and partial mock tests, we cannot extend the timeline as these are already being worked on by the TALL Team and can only be changed upon their approval. So kindly keep up with the Learning calendar.";
           matched = true;
         }
-        else if ((text.includes('check') || text.includes('know') || text.includes('find') || text.includes('see')) && (text.includes('ilt') || text.includes('schedule') || text.includes('calendar'))) {
+        else if (matchesPattern(text, [
+          'check ilt', 'ilt schedule', 'learning calendar', 'find ilt'
+        ])) {
           response = "You can visit the Learning calendar here: https://docs.google.com/spreadsheets/d/11kw1hvG5dLX9a6GwRd1UF_Mq9ivgCJvr-_2mtd6Z7OQ/edit?gid=0#gid=0 and check if you have any ILTs on a specific date.";
           matched = true;
         }
         
         // PORTAL & ACCESS PATTERNS
-        else if ((text.includes('portal') || text.includes('enqurious')) && (text.includes('login') || text.includes('access') || text.includes('credential'))) {
+        else if (matchesPattern(text, [
+          'portal login', 'enqurious login', 'portal access', 'portal credential'
+        ])) {
           response = "To access the Enqurious Portal, navigate to the login page (https://www.tredence.enqurious.com/auth/login), enter the credentials provided in your company email, and upon successful login, you can change your password and username.";
           matched = true;
         }
-        else if ((text.includes('issue') || text.includes('problem') || text.includes('trouble') || text.includes('help') || text.includes('can\'t') || text.includes('cannot') || text.includes('unable')) && (text.includes('login') || text.includes('logging') || text.includes('sign in') || text.includes('access')) && (text.includes('portal') || text.includes('enqurious'))) {
+        else if (matchesPattern(text, [
+          'login issue portal', 'login problem portal', 'trouble login portal', "can't login portal", 'unable access portal'
+        ])) {
           response = "If you're having trouble logging into the Enqurious Portal, here are some troubleshooting steps:\n\n1. Make sure you're using the correct URL: https://www.tredence.enqurious.com/auth/login\n2. Double-check that you're using the exact credentials provided in your company email\n3. Clear your browser cache or try using an incognito/private browsing window\n4. Try a different browser (Chrome or Firefox recommended)\n5. If you've forgotten your password, use the 'Forgot Password' option on the login page";
           matched = true;
         }
-        else if ((text.includes('gmail') || text.includes('google')) && text.includes('account')) {
+        else if (matchesPattern(text, [
+          'gmail account', 'google account'
+        ])) {
           response = "If you're having trouble accessing resources that require a Gmail account, try accessing them from an incognito tab in your browser.";
           matched = true;
         }
         
         // HELP DESK PATTERNS
-        else if (text.includes('help desk') || text.includes('helpdesk') || text.includes('support desk')) {
+        else if (matchesPattern(text, [
+          'help desk', 'helpdesk', 'support desk'
+        ])) {
           response = "There is a Help desk app available in Slack, but direct messaging to it has been turned off. For technical issues that I can't resolve, please post in the appropriate support channel or contact your instructor/mentor directly.";
           matched = true;
         }
         
         // GENERAL HELP PATTERN
-        else if (text.includes('help') || text.includes('assist') || text.includes('support')) {
+        else if (matchesPattern(text, [
+          'help', 'assist', 'support'
+        ])) {
           response = "I can help with questions about Zoom sessions, recordings, learning modules, ILTs, assessments, and more. What specific information do you need?";
           matched = true;
         }
       }
     }
     
-    // Send the response (without customization to avoid duplication)
+    // Send the response
     await say(response);
     console.log('Sent response:', response);
     
