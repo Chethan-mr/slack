@@ -17,25 +17,37 @@ let questionsCollection = null;
 let learnedQACollection = null;
 let isConnected = false;
 
-// Simple channel handler replacement (since dynamic-channel-handler wasn't provided)
+// Improved channel handler - focuses on private channels only
 const channelHandler = {
   async getMessageContext(message, client) {
     try {
       let programName = 'General';
       let channelName = 'direct-message';
+      let isPrivateChannel = false;
       
       // Get channel info if it's a channel message
       if (message.channel && message.channel.startsWith('C')) {
         try {
           const channelInfo = await client.conversations.info({ channel: message.channel });
           channelName = channelInfo.channel?.name || 'unknown-channel';
+          isPrivateChannel = channelInfo.channel?.is_private || false;
           
-          // Extract program name from channel name
-          programName = channelName
-            .replace(/[-_]/g, ' ')
-            .split(' ')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-            .join(' ');
+          // Only extract program name from PRIVATE channels
+          // Public channels are ignored for program context
+          if (isPrivateChannel) {
+            programName = channelName
+              .replace(/[-_]/g, ' ')
+              .replace(/\b(databricks|announcements|general)\b/gi, '') // Remove common public channel names
+              .trim()
+              .split(' ')
+              .filter(word => word.length > 0)
+              .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+              .join(' ') || 'Learning Program';
+          } else {
+            // For public channels, use generic program name
+            programName = 'General';
+            channelName = 'public-channel'; // Don't expose public channel names
+          }
         } catch (error) {
           console.error('Error getting channel info:', error);
         }
@@ -44,7 +56,8 @@ const channelHandler = {
       return {
         programInfo: {
           programName: programName,
-          channelName: channelName
+          channelName: channelName,
+          isPrivateChannel: isPrivateChannel
         }
       };
     } catch (error) {
@@ -52,14 +65,15 @@ const channelHandler = {
       return {
         programInfo: {
           programName: 'General',
-          channelName: 'unknown'
+          channelName: 'unknown',
+          isPrivateChannel: false
         }
       };
     }
   },
   
   getLinkResponse(text, context) {
-    // Simple link response handler - can be expanded based on your needs
+    // Simple link response handler
     if (text.includes('portal') || text.includes('learning')) {
       return "You can access the learning portal at: https://www.tredence.enqurious.com/auth/login";
     }
@@ -67,6 +81,31 @@ const channelHandler = {
       return "You can check the Learning calendar here: https://docs.google.com/spreadsheets/d/11kw1hvG5dLX9a6GwRd1UF_Mq9ivgCJvr-_2mtd6Z7OQ/edit?gid=0#gid=0";
     }
     return null;
+  },
+  
+  // Custom response that doesn't add program info for public channels
+  customizeResponse(baseResponse, context) {
+    if (!context.programInfo || !context.programInfo.isPrivateChannel) {
+      return baseResponse; // Don't customize for public channels
+    }
+    
+    const programName = context.programInfo.programName;
+    
+    // Don't customize greetings and common responses to avoid duplication
+    if (baseResponse.includes("I'm your learning assistant bot") || 
+        baseResponse.includes("You're welcome!") ||
+        baseResponse.includes("I'm EnquBuddy") ||
+        baseResponse.includes("Hello!") ||
+        baseResponse.includes("Thanks for asking!")) {
+      return baseResponse;
+    }
+    
+    // Add program name only if it's a meaningful private channel program
+    if (programName && programName !== 'General' && programName !== 'Learning Program') {
+      return `${baseResponse}\n\nI'm your assistant for the ${programName} program. Let me know if you need anything else!`;
+    }
+    
+    return baseResponse;
   },
   
   scheduleChannelScans(client) {
@@ -281,11 +320,6 @@ async function addPredefinedQAs() {
     try {
       // Add to General knowledge base with high confidence
       await knowledgeLearner.recordQAPair(qa.question, qa.answer, 'General', 0.95);
-      
-      // Also add to common program contexts
-      await knowledgeLearner.recordQAPair(qa.question, qa.answer, 'Databricks', 0.95);
-      await knowledgeLearner.recordQAPair(qa.question, qa.answer, 'Announcements', 0.95);
-      
       console.log(`Added Q&A: "${qa.question.substring(0, 50)}..."`);
     } catch (error) {
       console.error(`Error adding Q&A pair: ${qa.question.substring(0, 30)}...`, error);
@@ -341,7 +375,7 @@ function getPreciseAnswer(text) {
     "can i complete modules at my own pace": "Yes, you don't have to complete self-paced modules within the given time. The time mentioned is just for your reference. You can complete the modules at your own pace.",
     "self paced modules time limit": "No, you don't have to complete self-paced modules within the given time. The time mentioned is just for your reference. You can complete the modules at your own pace.",
     
-    // Greetings
+    // Greetings - REMOVED DATABRICKS
     "hi": "Hello! 👋 I'm your learning assistant bot. How can I help you today?",
     "hello": "Hello! 👋 I'm your learning assistant bot. How can I help you today?",
     "hey": "Hello! 👋 I'm your learning assistant bot. How can I help you today?",
@@ -395,7 +429,9 @@ const app = new App({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
 
-// IMPROVED MESSAGE HANDLER - Only responds when confident
+console.log("🚀 USING IMPROVED BOT VERSION - PRECISE MATCHING & PRIVATE CHANNEL FOCUS ENABLED");
+
+// IMPROVED MESSAGE HANDLER - Only responds when confident, no duplicates
 app.message(async ({ message, say, client }) => {
   // Skip messages from bots
   if (message.subtype === 'bot_message') return;
@@ -411,6 +447,9 @@ app.message(async ({ message, say, client }) => {
     // Get message context from channel handler
     const context = await channelHandler.getMessageContext(message, client);
     const programName = context.programInfo?.programName || 'General';
+    const isPrivateChannel = context.programInfo?.isPrivateChannel || false;
+    
+    console.log(`Context: Program=${programName}, Private=${isPrivateChannel}, Channel=${context.programInfo?.channelName}`);
     
     // DATABASE STATUS COMMAND - only works for admin
     if (text === '!dbping' && (message.user === process.env.ADMIN_USER_ID)) {
@@ -564,7 +603,12 @@ app.message(async ({ message, say, client }) => {
       matched = false; // Mark as unmatched for learning purposes
     }
     
-    // Send the response
+    // STEP 5: Apply program-specific customization ONLY for private channels
+    if (matched && isPrivateChannel && programName !== 'General') {
+      response = channelHandler.customizeResponse(response, context);
+    }
+    
+    // Send the response (SINGLE RESPONSE ONLY)
     await say(response);
     console.log('Sent response:', response);
     
@@ -581,12 +625,14 @@ app.message(async ({ message, say, client }) => {
           username = message.user || 'unknown';
         }
         
-        // Get channel info
+        // Get channel info (but don't expose public channel names in logs)
         let channelName = 'direct-message';
         if (message.channel.startsWith('C')) {
           try {
             const channelInfo = await client.conversations.info({ channel: message.channel });
-            channelName = channelInfo.channel?.name || 'unknown-channel';
+            channelName = channelInfo.channel?.is_private 
+              ? (channelInfo.channel?.name || 'private-channel')
+              : 'public-channel';
           } catch (channelError) {
             console.error('Error getting channel info:', channelError);
           }
@@ -618,7 +664,7 @@ app.message(async ({ message, say, client }) => {
   }
 });
 
-// App mention handler - also improved for precision
+// App mention handler - also improved for precision and no duplicates
 app.event('app_mention', async ({ event, say, client }) => {
   try {
     console.log('Received mention:', event.text);
@@ -637,6 +683,7 @@ app.event('app_mention', async ({ event, say, client }) => {
       }, client);
       
       const programName = context.programInfo?.programName || 'General';
+      const isPrivateChannel = context.programInfo?.isPrivateChannel || false;
       
       // Check for high-confidence learned answers first
       let learnedResponse = null;
@@ -675,7 +722,12 @@ app.event('app_mention', async ({ event, say, client }) => {
         }
       }
       
-      // Send the response in thread
+      // Apply program-specific customization ONLY for private channels
+      if (matched && isPrivateChannel && programName !== 'General') {
+        response = channelHandler.customizeResponse(response, context);
+      }
+      
+      // Send the response in thread (SINGLE RESPONSE ONLY)
       await say({
         text: response,
         thread_ts: event.ts
@@ -697,7 +749,9 @@ app.event('app_mention', async ({ event, say, client }) => {
           let channelName = 'unknown-channel';
           try {
             const channelInfo = await client.conversations.info({ channel: event.channel });
-            channelName = channelInfo.channel?.name || 'unknown-channel';
+            channelName = channelInfo.channel?.is_private 
+              ? (channelInfo.channel?.name || 'private-channel')
+              : 'public-channel';
           } catch (channelError) {
             console.error('Error getting channel info:', channelError);
           }
@@ -866,14 +920,14 @@ const PORT = process.env.PORT || 3000;
         await knowledgeLearner.ensureIndexes();
         console.log('Database indexes created successfully');
         
-        // Initialize knowledge learner's periodic learning
+        // Initialize knowledge learner's periodic learning (modified to only scan channels where bot is member)
         knowledgeLearner.schedulePeriodicLearning(app.client);
         
         // Initialize channel handler's periodic scanning
         channelHandler.scheduleChannelScans(app.client);
         
-        // Initial learning from history - with error handling
-        console.log('Starting initial learning from channel history...');
+        // Initial learning from history - with error handling (FIXED: only where bot is member)
+        console.log('Starting initial learning from channel history (bot member channels only)...');
         try {
           await knowledgeLearner.learnFromChannelHistory(app.client);
           console.log('Channel history learning completed.');
@@ -907,7 +961,7 @@ const PORT = process.env.PORT || 3000;
     
     // Then start the Slack app
     await app.start(PORT);
-    console.log(`⚡️ Educational Bot is running on port ${PORT}! Now responding only to confident matches.`);
+    console.log(`⚡️ Educational Bot is running on port ${PORT}! Now responding only to confident matches with private channel focus.`);
   } catch (error) {
     console.error('Error starting the app:', error);
   }
