@@ -1,5 +1,6 @@
 // knowledge-learner.js
 // Module for reading historical conversations and building knowledge base
+// FIXED: Only reads channels where the bot is a member
 
 const { MongoClient } = require('mongodb');
 const NodeCache = require('node-cache');
@@ -68,18 +69,19 @@ async function ensureIndexes() {
 }
 
 /**
- * Learn from historical conversations in Slack
+ * Learn from historical conversations in Slack - ONLY channels where bot is a member
  * @param {object} client - Slack client
  * @returns {Promise<number>} - Number of Q&A pairs learned
  */
 async function learnFromChannelHistory(client) {
-  console.log('Starting to learn from channel history...');
+  console.log('Starting to learn from channel history (bot member channels only)...');
   let learnedCount = 0;
   
   try {
-    // Get list of all public channels
+    // Get list of channels where the bot is a member (both public and private)
     const channelsResult = await client.conversations.list({
-      types: 'public_channel',
+      types: 'public_channel,private_channel',
+      exclude_archived: true,
       limit: 1000
     });
     
@@ -88,11 +90,28 @@ async function learnFromChannelHistory(client) {
       return 0;
     }
     
-    // Process each channel
-    for (const channel of channelsResult.channels) {
-      console.log(`Learning from channel: ${channel.name} (${channel.id})`);
+    // Filter to only channels where the bot is a member
+    const memberChannels = channelsResult.channels.filter(channel => {
+      // For public channels, check is_member
+      // For private channels, if we can see them in the list, we're likely a member
+      return channel.is_member === true || channel.is_private === true;
+    });
+    
+    console.log(`Found ${memberChannels.length} channels where bot is a member (out of ${channelsResult.channels.length} total)`);
+    
+    // Process each channel where the bot is a member
+    for (const channel of memberChannels) {
+      console.log(`Learning from channel: ${channel.name} (${channel.id}) - ${channel.is_private ? 'Private' : 'Public'}`);
       
       try {
+        // Double-check that we can access the channel before trying to read history
+        try {
+          await client.conversations.info({ channel: channel.id });
+        } catch (accessError) {
+          console.log(`Cannot access channel ${channel.name}, skipping...`);
+          continue;
+        }
+        
         // Get conversation history
         const historyResult = await client.conversations.history({
           channel: channel.id,
@@ -100,23 +119,28 @@ async function learnFromChannelHistory(client) {
         });
         
         if (!historyResult.messages || historyResult.messages.length === 0) {
+          console.log(`No messages found in channel ${channel.name}`);
           continue;
         }
         
         // Group messages into Q&A pairs
-        const qaGroups = identifyQAPairs(historyResult.messages, channel.id, channel.name);
+        const qaGroups = identifyQAPairs(historyResult.messages, channel.id, channel.name, channel.is_private);
         
         // Store learned Q&A pairs
         if (qaGroups.length > 0) {
-          learnedCount += await storeLearnedQA(qaGroups, channel.name);
+          const channelLearnedCount = await storeLearnedQA(qaGroups, channel.name);
+          learnedCount += channelLearnedCount;
+          console.log(`Learned ${channelLearnedCount} Q&A pairs from channel ${channel.name}`);
+        } else {
+          console.log(`No Q&A pairs found in channel ${channel.name}`);
         }
       } catch (channelError) {
-        console.error(`Error learning from channel ${channel.name}:`, channelError);
+        console.error(`Error learning from channel ${channel.name}:`, channelError.message);
         // Continue with next channel
       }
     }
     
-    console.log(`Completed learning from channel history. Learned ${learnedCount} Q&A pairs.`);
+    console.log(`Completed learning from channel history. Learned ${learnedCount} Q&A pairs from ${memberChannels.length} channels.`);
     return learnedCount;
   } catch (error) {
     console.error('Error during channel history learning:', error);
@@ -129,9 +153,10 @@ async function learnFromChannelHistory(client) {
  * @param {Array} messages - Array of Slack messages
  * @param {string} channelId - Channel ID
  * @param {string} channelName - Channel name
+ * @param {boolean} isPrivate - Whether the channel is private
  * @returns {Array} - Array of Q&A pairs
  */
-function identifyQAPairs(messages, channelId, channelName) {
+function identifyQAPairs(messages, channelId, channelName, isPrivate = false) {
   const qaGroups = [];
   let currentGroup = null;
   
@@ -140,14 +165,20 @@ function identifyQAPairs(messages, channelId, channelName) {
     parseFloat(a.ts) - parseFloat(b.ts)
   );
   
-  // Extract program name from channel
-  let programName = channelName;
-  // Clean up program name from channel name
-  programName = programName
-    .replace(/[-_]/g, ' ')
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
+  // Extract program name from channel - prioritize private channels
+  let programName = 'General';
+  if (isPrivate && channelName) {
+    // For private channels, extract meaningful program name
+    programName = channelName
+      .replace(/[-_]/g, ' ')
+      .replace(/\b(databricks|announcements|general|public)\b/gi, '') // Remove common public channel terms
+      .trim()
+      .split(' ')
+      .filter(word => word.length > 0)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ') || 'Learning Program';
+  }
+  // For public channels, use generic program name to avoid exposing channel names
   
   for (const message of sortedMessages) {
     // Skip bot messages except for our own bot
@@ -165,7 +196,8 @@ function identifyQAPairs(messages, channelId, channelName) {
         ts: message.ts,
         channelId: channelId,
         channelName: channelName,
-        programName: programName
+        programName: programName,
+        isPrivateChannel: isPrivate
       };
       qaGroups.push(currentGroup);
     } 
@@ -241,10 +273,13 @@ async function storeLearnedQA(qaGroups, channelName) {
     // Use bot answer if available, otherwise use the best human answer
     const answer = group.botAnswer || group.answers[0].text;
     
-    // Set confidence score
-    const confidence = group.confidence || 
-                      (group.botAnswer ? 0.9 : 
-                       (group.answers.length > 2 ? 0.8 : 0.6));
+    // Set confidence score - higher for private channels
+    const baseConfidence = group.confidence || 
+                          (group.botAnswer ? 0.9 : 
+                           (group.answers.length > 2 ? 0.8 : 0.6));
+    
+    // Boost confidence for private channels (more relevant context)
+    const confidence = group.isPrivateChannel ? Math.min(baseConfidence + 0.1, 1.0) : baseConfidence;
     
     try {
       // Check if this Q&A pair already exists
@@ -262,7 +297,8 @@ async function storeLearnedQA(qaGroups, channelName) {
               $set: { 
                 answer: answer,
                 confidence: confidence,
-                lastUpdated: new Date()
+                lastUpdated: new Date(),
+                isFromPrivateChannel: group.isPrivateChannel
               },
               $inc: { useCount: 1 }
             }
@@ -277,6 +313,7 @@ async function storeLearnedQA(qaGroups, channelName) {
           programName: group.programName,
           channelName: channelName,
           confidence: confidence,
+          isFromPrivateChannel: group.isPrivateChannel,
           useCount: 1,
           createdAt: new Date(),
           lastUpdated: new Date()
@@ -344,6 +381,7 @@ async function learnFromBotHistory() {
             answer: qa.response,
             programName: qa.programName || 'General',
             confidence: 0.95, // High confidence for our own matched answers
+            isFromPrivateChannel: qa.channelName !== 'public-channel',
             useCount: 1,
             createdAt: new Date(),
             lastUpdated: new Date()
@@ -372,7 +410,7 @@ async function learnFromBotHistory() {
 }
 
 /**
- * Find answer from learned knowledge
+ * Find answer from learned knowledge - prioritize private channel context
  * @param {string} question - User's question
  * @param {string} programName - Program context
  * @returns {Promise<object|null>} - Answer or null if not found
@@ -396,7 +434,7 @@ async function findLearnedAnswer(question, programName) {
   // If not in cache and MongoDB is connected, search database
   if (isConnected && learnedQACollection) {
     try {
-      // Search for similar questions in this program
+      // Search for similar questions in this program - prioritize private channel answers
       const result = await learnedQACollection.findOne(
         {
           $text: { $search: question },
@@ -407,9 +445,14 @@ async function findLearnedAnswer(question, programName) {
           projection: {
             answer: 1,
             confidence: 1,
+            isFromPrivateChannel: 1,
             score: { $meta: "textScore" }
           },
-          sort: { score: { $meta: "textScore" } }
+          sort: { 
+            score: { $meta: "textScore" },
+            isFromPrivateChannel: -1, // Prioritize private channel answers
+            confidence: -1 
+          }
         }
       );
       
@@ -430,11 +473,11 @@ async function findLearnedAnswer(question, programName) {
         return {
           answer: result.answer,
           confidence: result.confidence,
-          source: 'database'
+          source: result.isFromPrivateChannel ? 'database-private' : 'database-public'
         };
       }
       
-      // If no match in program, try general knowledge
+      // If no match in program, try general knowledge (lower priority)
       if (programName !== 'General') {
         const generalResult = await learnedQACollection.findOne(
           {
@@ -491,6 +534,7 @@ async function debugSearch(searchTerm) {
           programName: 1,
           confidence: 1,
           useCount: 1,
+          isFromPrivateChannel: 1,
           score: { $meta: "textScore" }
         },
         sort: { score: { $meta: "textScore" } }
@@ -534,9 +578,14 @@ async function searchKnowledgeBase(searchTerm, programName = null) {
           confidence: 1,
           programName: 1,
           useCount: 1,
+          isFromPrivateChannel: 1,
           score: { $meta: "textScore" }
         },
-        sort: { score: { $meta: "textScore" } }
+        sort: { 
+          score: { $meta: "textScore" },
+          isFromPrivateChannel: -1, // Prioritize private channel answers
+          confidence: -1 
+        }
       }
     );
     
@@ -551,7 +600,8 @@ async function searchKnowledgeBase(searchTerm, programName = null) {
         answer: result.answer,
         confidence: result.confidence,
         programName: result.programName,
-        useCount: result.useCount
+        useCount: result.useCount,
+        isFromPrivateChannel: result.isFromPrivateChannel
       };
     }
     
@@ -606,6 +656,7 @@ async function recordQAPair(question, answer, programName, confidence = 0.9) {
           answer: answer,
           programName: programName,
           confidence: confidence,
+          isFromPrivateChannel: false, // New recordings are from current interactions
           useCount: 1,
           createdAt: new Date(),
           lastUpdated: new Date()
@@ -622,7 +673,7 @@ async function recordQAPair(question, answer, programName, confidence = 0.9) {
 }
 
 /**
- * Schedule periodic learning from channel history
+ * Schedule periodic learning from channel history - ONLY bot member channels
  * @param {object} client - Slack client
  */
 function schedulePeriodicLearning(client) {
@@ -631,7 +682,7 @@ function schedulePeriodicLearning(client) {
   
   // Initial learning (delayed to allow bot to fully start)
   setTimeout(async () => {
-    console.log('Starting initial learning from channels and history...');
+    console.log('Starting initial learning from bot member channels and history...');
     try {
       await learnFromChannelHistory(client);
       await learnFromBotHistory();
@@ -642,7 +693,7 @@ function schedulePeriodicLearning(client) {
   
   // Schedule periodic learning
   setInterval(async () => {
-    console.log('Running scheduled learning from channels and history...');
+    console.log('Running scheduled learning from bot member channels and history...');
     try {
       await learnFromChannelHistory(client);
       await learnFromBotHistory();
