@@ -270,7 +270,46 @@ function getDirectAnswer(text) {
   return null;
 }
 
-// Function to create main category selection blocks
+// Function to determine which category a question belongs to
+function categorizeQuestion(question) {
+  const normalizedText = question.toLowerCase();
+  
+  // Zoom-related keywords
+  if (normalizedText.includes('zoom') || normalizedText.includes('meeting') || 
+      normalizedText.includes('audio') || normalizedText.includes('video') || 
+      normalizedText.includes('microphone') || normalizedText.includes('camera') ||
+      normalizedText.includes('join') && (normalizedText.includes('session') || normalizedText.includes('call'))) {
+    return 'zoom';
+  }
+  
+  // Enqurious platform keywords
+  if (normalizedText.includes('enqurious') || normalizedText.includes('platform') || 
+      normalizedText.includes('portal') || normalizedText.includes('login') || 
+      normalizedText.includes('dashboard') || normalizedText.includes('task') || 
+      normalizedText.includes('filter') || normalizedText.includes('skill path') ||
+      normalizedText.includes('assignment') || normalizedText.includes('submission') ||
+      normalizedText.includes('deadline') || normalizedText.includes('mock test') ||
+      normalizedText.includes('assessment') || normalizedText.includes('module')) {
+    return 'enqurious';
+  }
+  
+  // Content and resources keywords
+  if (normalizedText.includes('recording') || normalizedText.includes('calendar') || 
+      normalizedText.includes('session recording') || normalizedText.includes('learning calendar') ||
+      normalizedText.includes('resource') || normalizedText.includes('link')) {
+    return 'content';
+  }
+  
+  // Support keywords
+  if (normalizedText.includes('issue') || normalizedText.includes('problem') || 
+      normalizedText.includes('trouble') || normalizedText.includes('error') ||
+      normalizedText.includes('help') || normalizedText.includes('support')) {
+    return 'support';
+  }
+  
+  // Default to showing all categories
+  return null;
+}
 function createMainCategoryBlocks() {
   return [
     {
@@ -828,7 +867,7 @@ const app = new App({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
 
-console.log("🚀 USING INTERACTIVE BOT VERSION WITH CATEGORY SELECTION - FIXED NO_TEXT ERROR");
+console.log("🚀 SMART INTERACTIVE BOT - SHOWS RELEVANT CATEGORY SECTIONS BASED ON QUESTION TYPE");
 
 // MAIN MESSAGE HANDLER with interactive features
 app.message(async ({ message, say, client }) => {
@@ -999,7 +1038,7 @@ app.message(async ({ message, say, client }) => {
       }
     }
     
-    // INTERACTIVE MENU TRIGGER - if user says "help", "menu", "categories"
+    // INTERACTIVE MENU TRIGGER - if user specifically asks for help menu
     if (normalizedText === 'help' || normalizedText === 'menu' || normalizedText === 'categories' || 
         normalizedText === 'options' || normalizedText === 'what can you help with') {
       await say({
@@ -1035,63 +1074,169 @@ app.message(async ({ message, say, client }) => {
       }
     }
     
-    // STEP 3: If no confident answer found, offer interactive menu OR direct to contact person
-    if (!matched) {
-      console.log('No confident answer found, offering interactive menu');
+    // STEP 3: For ALL messages, show interactive menu with answer or fallback
+    if (matched) {
+      // Send direct answer first, then show categories
+      await say(response);
+      console.log('Sent direct response:', response);
       
-      // If message looks like a question, offer both menu and contact
-      if (originalText.includes('?') || originalText.toLowerCase().includes('how') || 
-          originalText.toLowerCase().includes('what') || originalText.toLowerCase().includes('where')) {
-        await say({
-          text: "I'm not sure about that specific question. You can browse help categories or contact human support.",
-          blocks: [
-            {
-              "type": "section",
-              "text": {
-                "type": "mrkdwn",
-                "text": "I'm not sure about that specific question. You can:"
-              }
-            },
-            {
-              "type": "actions",
-              "elements": [
-                {
-                  "type": "button",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "📋 Browse Help Categories",
-                    "emoji": true
-                  },
-                  "value": "show_categories",
-                  "action_id": "show_main_categories"
-                },
-                {
-                  "type": "button",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "👤 Contact Human Support",
-                    "emoji": true
-                  },
-                  "value": "contact_human",
-                  "action_id": "contact_human_support"
-                }
-              ]
+      // Also show categories for additional help
+      await say({
+        text: "Need help with something else? Choose a category below:",
+        blocks: [
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "Need help with something else? Choose a category below:"
             }
-          ]
-        });
-      } else {
-        // For non-questions, just show the interactive menu
-        await say({
-          text: "EnquBuddy Learning Assistant - How can I help you today?",
-          blocks: createMainCategoryBlocks()
-        });
-      }
+          },
+          {
+            "type": "actions",
+            "elements": [
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🔧 Zoom & Meetings",
+                  "emoji": true
+                },
+                "value": "zoom",
+                "action_id": "category_zoom"
+              },
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🖥️ Enqurious Platform",
+                  "emoji": true
+                },
+                "value": "enqurious",
+                "action_id": "category_enqurious"
+              },
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "📹 Content & Resources",
+                  "emoji": true
+                },
+                "value": "content",
+                "action_id": "category_content"
+              }
+            ]
+          },
+          {
+            "type": "actions",
+            "elements": [
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🆘 Support & Help",
+                  "emoji": true
+                },
+                "value": "support",
+                "action_id": "category_support"
+              },
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "❓ Other Questions",
+                  "emoji": true
+                },
+                "value": "others",
+                "action_id": "category_others"
+              }
+            ]
+          }
+        ]
+      });
+    } else {
+      // No direct answer found, show full interactive menu
+      console.log('No confident answer found, showing full interactive menu');
+      await say({
+        text: "I'm not sure about that specific question. Choose a category below or contact human support:",
+        blocks: [
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "I'm not sure about that specific question. Choose a category below:"
+            }
+          },
+          {
+            "type": "actions",
+            "elements": [
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🔧 Zoom & Meetings",
+                  "emoji": true
+                },
+                "value": "zoom",
+                "action_id": "category_zoom"
+              },
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🖥️ Enqurious Platform",
+                  "emoji": true
+                },
+                "value": "enqurious",
+                "action_id": "category_enqurious"
+              },
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "📹 Content & Resources",
+                  "emoji": true
+                },
+                "value": "content",
+                "action_id": "category_content"
+              }
+            ]
+          },
+          {
+            "type": "actions",
+            "elements": [
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🆘 Support & Help",
+                  "emoji": true
+                },
+                "value": "support",
+                "action_id": "category_support"
+              },
+              {
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "❓ Other Questions",
+                  "emoji": true
+                },
+                "value": "others",
+                "action_id": "category_others"
+              }
+            ]
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "Or contact <@abhilipsha> for personalized assistance."
+            }
+          }
+        ]
+      });
       matched = false;
       response = "Interactive menu offered";
-    } else {
-      // Send SINGLE response - no additional customization to avoid conflicts
-      await say(response);
-      console.log('Sent single response:', response);
     }
     
     // Log the question to MongoDB if connected
@@ -1498,11 +1643,8 @@ const PORT = process.env.PORT || 3000;
       console.log('MongoDB connected successfully');
       isConnected = true;
       
-      // Only enable learning capabilities, no scanning to avoid conflicts
+      // Only enable learning capabilities, no channel scanning to avoid conflicts
       try {
-        await knowledgeLearner.ensureIndexes();
-        console.log('Database indexes created successfully');
-        
         // Add predefined Q&A pairs including Enqurious platform FAQs
         try {
           await addPredefinedQAs();
@@ -1521,7 +1663,7 @@ const PORT = process.env.PORT || 3000;
     
     // Start the Slack app
     await app.start(PORT);
-    console.log(`⚡️ Educational Bot is running on port ${PORT}! Interactive version with category selection - FIXED NO_TEXT ERROR.`);
+    console.log(`⚡️ Smart Educational Bot is running on port ${PORT}! Shows relevant category sections based on question type.`);
   } catch (error) {
     console.error('Error starting the app:', error);
   }
