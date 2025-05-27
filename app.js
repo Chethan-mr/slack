@@ -17,6 +17,58 @@ let questionsCollection = null;
 let learnedQACollection = null;
 let isConnected = false;
 
+// Interactive category definitions
+const HELP_CATEGORIES = {
+  zoom: {
+    title: "🔧 Zoom & Meeting Support",
+    description: "Help with joining meetings, audio/video setup, troubleshooting",
+    subcategories: [
+      { value: "zoom_join", text: "Joining Meetings", description: "How to join Zoom sessions" },
+      { value: "zoom_issues", text: "Meeting Issues", description: "Troubleshooting connection problems" },
+      { value: "zoom_audio", text: "Audio & Video", description: "Setting up microphone and camera" },
+      { value: "zoom_account", text: "Account & Access", description: "Zoom account requirements" },
+      { value: "zoom_devices", text: "Device Support", description: "Phone, tablet, browser access" }
+    ]
+  },
+  enqurious: {
+    title: "🖥️ Enqurious Learning Platform",
+    description: "Complete platform support - login, navigation, tasks, assessments",
+    subcategories: [
+      { value: "platform_login", text: "Access & Login", description: "Logging into the platform" },
+      { value: "platform_navigation", text: "Navigation & Interface", description: "Using filters, dashboard, status indicators" },
+      { value: "platform_content", text: "Content Types", description: "Skill paths, projects, scenarios, terminology" },
+      { value: "platform_tasks", text: "Task Management", description: "Managing and navigating tasks" },
+      { value: "platform_submissions", text: "Submissions & Feedback", description: "Viewing scores, deadlines" },
+      { value: "platform_assessments", text: "Assessments & Deadlines", description: "Mock tests, timeline policies" }
+    ]
+  },
+  content: {
+    title: "📹 Content Access & Resources",
+    description: "Session recordings, learning calendar, resource links",
+    subcategories: [
+      { value: "content_recordings", text: "Session Recordings", description: "Accessing recorded sessions" },
+      { value: "content_calendar", text: "Learning Calendar", description: "Schedule and timeline access" },
+      { value: "content_resources", text: "Resource Links", description: "Important platform resources" }
+    ]
+  },
+  support: {
+    title: "🆘 Support & Troubleshooting",
+    description: "Platform issues, technical support, general help",
+    subcategories: [
+      { value: "support_platform", text: "Platform Issues", description: "Technical problems with the platform" },
+      { value: "support_general", text: "General Help", description: "Other support needs" }
+    ]
+  },
+  others: {
+    title: "❓ Others",
+    description: "Questions not covered above - contact human support",
+    subcategories: [
+      { value: "others_general", text: "General Queries", description: "Questions not in other categories" },
+      { value: "others_contact", text: "Contact Support", description: "Speak with a human assistant" }
+    ]
+  }
+};
+
 // Consolidated response handler - NO external dependencies that could cause conflicts
 function getDirectAnswer(text) {
   const normalizedText = text.toLowerCase().trim();
@@ -90,78 +142,42 @@ function getDirectAnswer(text) {
     "self paced modules time limit": "No, you don't have to complete self-paced modules within the given time. The time mentioned is just for your reference. You can complete the modules at your own pace.",
     "do i need to complete the self-paced modules within the given time": "No, the timeline is for reference only. You can complete the modules at your own pace.",
     
-    // ENQURIOUS PLATFORM SPECIFIC Q&As
-    
-    // Q1. Filter options
+    // All the Enqurious platform specific questions (keeping them for direct typing)
     "how can i use filter options to find specific content": "The learner platform provides several filter options: Status Filter (Pending or Completed), Label Filter (by tags), Type Filter (Scenario, Project, Masterclass, Skill Path), and Content Type Filter. Using these filters helps you quickly find and navigate your learning content.",
     "how to use filters on enqurious platform": "The learner platform provides several filter options: Status Filter (Pending or Completed), Label Filter (by tags), Type Filter (Scenario, Project, Masterclass, Skill Path), and Content Type Filter. Using these filters helps you quickly find and navigate your learning content.",
     "how to filter content on learner platform": "The learner platform provides several filter options: Status Filter (Pending or Completed), Label Filter (by tags), Type Filter (Scenario, Project, Masterclass, Skill Path), and Content Type Filter. Using these filters helps you quickly find and navigate your learning content.",
-    
-    // Q2. Status indicators
     "what do the different status indicators mean": "Status indicators mean: Submission Deadline Expired (deadline passed, can view but not submit), Running Behind Schedule (content is behind schedule, need to catch up), Upcoming (content not yet available but will be soon).",
     "what do status indicators mean": "Status indicators mean: Submission Deadline Expired (deadline passed, can view but not submit), Running Behind Schedule (content is behind schedule, need to catch up), Upcoming (content not yet available but will be soon).",
-    
-    // Q3. View scores and feedback
     "how can i view my total score feedback and solutions": "You can view submission details based on access granted by the client admin. Availability of scores, feedback, and solutions depends on the content creator's settings.",
     "how to view my scores and feedback": "You can view submission details based on access granted by the client admin. Availability of scores, feedback, and solutions depends on the content creator's settings.",
-    
-    // Q4. Self-paced modules (already covered above, but adding variations)
     "how can i access self-paced modules": "Log in to the Enqurious learning portal and click on a topic to start learning at your own pace. You can access self-paced modules by logging into the Enqurious learning portal at https://www.tredence.enqurious.com/auth/login?redirect_uri=/. Simply click on a topic to access its content and start learning.",
-    
-    // Q7. Login information
     "what login information is required to access enqurious portal": "Use the login credentials sent to your company email. After login, you can change your password and username.",
     "what login information do i need": "Use the login credentials sent to your company email. After login, you can change your password and username.",
-    
-    // Q9. How to log into Enqurious
     "how do i log into my enqurious account": "Enter your registered email and password on the login page. Use the 'Forgot password?' link if you need to reset your password.",
     "how to log into enqurious": "Enter your registered email and password on the login page. Use the 'Forgot password?' link if you need to reset your password.",
-    
-    // Q10. View assigned tasks
     "how can i view my assigned tasks and their progress": "Your dashboard displays total tasks assigned, completed, and pending. You can filter and search tasks by status, content type, and other criteria.",
     "how to view my tasks": "Your dashboard displays total tasks assigned, completed, and pending. You can filter and search tasks by status, content type, and other criteria.",
     "how to see my assigned tasks": "Your dashboard displays total tasks assigned, completed, and pending. You can filter and search tasks by status, content type, and other criteria.",
-    
-    // Q11. Running behind schedule
     "what does running behind schedule mean": "It means the task or learning path deadline is close or passed, and you need to complete it soon.",
     "what does running behind schedule mean on a task": "It means the task or learning path deadline is close or passed, and you need to complete it soon.",
-    
-    // Q12. Resume task
     "how can i resume a task or learning path": "Click the 'Resume Now' button under the task to continue from where you left off.",
     "how to resume a task": "Click the 'Resume Now' button under the task to continue from where you left off.",
-    
-    // Q13. Completed vs pending tasks
     "what is the difference between completed tasks and pending tasks": "Completed: Tasks you have finished. Pending: Tasks yet to be completed.",
     "difference between completed and pending tasks": "Completed: Tasks you have finished. Pending: Tasks yet to be completed.",
-    
-    // Q14. Labels meaning
     "what do labels like skill path hackathon masterclass project and scenario mean": "They indicate the type of activity: Skill Path (Learning journey), Hackathon (Competitive event), Masterclass (Expert-led session), Project (Practical assignments), Scenario (Real-world case studies).",
     "what do the different labels mean": "They indicate the type of activity: Skill Path (Learning journey), Hackathon (Competitive event), Masterclass (Expert-led session), Project (Practical assignments), Scenario (Real-world case studies).",
-    
-    // Q15. Detailed timeline
     "how can i see the detailed timeline of my tasks": "The timeline section on the right side of the dashboard shows deadlines and status updates.",
     "how to see task timeline": "The timeline section on the right side of the dashboard shows deadlines and status updates.",
-    
-    // Q16. Miss submission deadline
     "what should i do if i miss a submission deadline": "The platform will show 'Submission deadline expired.' Contact your administrator or client admin for assistance.",
     "what if i miss a deadline": "The platform will show 'Submission deadline expired.' Contact your administrator or client admin for assistance.",
-    
-    // Q17. View submission button
     "what is the view submission button": "This button lets you review your submitted work. It is available only if your client admin has enabled submission review for that task.",
-    
-    // Q18. Learning objectives
     "how can i check my learning objectives for a task": "Within each learning path or task, find the 'Learning objectives' section outlining skills and knowledge expected.",
     "how to check learning objectives": "Within each learning path or task, find the 'Learning objectives' section outlining skills and knowledge expected.",
-    
-    // Q19. Navigate between modules
     "how do i navigate between different modules or scenarios within a task": "Use the navigation or progress bar inside the task to move between modules or scenarios.",
     "how to navigate between modules": "Use the navigation or progress bar inside the task to move between modules or scenarios.",
-    
-    // Q20. Issues accessing content
     "what should i do if i face issues accessing tasks or content": "Contact support at notifications@enqurious.com or your internal support team.",
     "what if i have issues accessing content": "Contact support at notifications@enqurious.com or your internal support team.",
     "how to get help with platform issues": "Contact support at notifications@enqurious.com or your internal support team.",
-    
-    // Q21. Skills and tools representation
     "how are skills and tools represented in each learning module": "Skills and tools are shown as tags related to each task to help you understand targeted expertise.",
     "how to see skills and tools": "Skills and tools are shown as tags related to each task to help you understand targeted expertise.",
   };
@@ -252,6 +268,237 @@ function getDirectAnswer(text) {
   
   // No confident match found
   return null;
+}
+
+// Function to create main category selection blocks
+function createMainCategoryBlocks() {
+  return [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "🤖 EnquBuddy Learning Assistant",
+        "emoji": true
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "Welcome! I can help you with your learning journey. Choose a category below or ask me a question directly:"
+      }
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "🔧 Zoom & Meetings",
+            "emoji": true
+          },
+          "value": "zoom",
+          "action_id": "category_zoom"
+        },
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "🖥️ Enqurious Platform",
+            "emoji": true
+          },
+          "value": "enqurious",
+          "action_id": "category_enqurious"
+        }
+      ]
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "📹 Content & Resources",
+            "emoji": true
+          },
+          "value": "content",
+          "action_id": "category_content"
+        },
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "🆘 Support & Help",
+            "emoji": true
+          },
+          "value": "support",
+          "action_id": "category_support"
+        }
+      ]
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "❓ Other Questions",
+            "emoji": true
+          },
+          "value": "others",
+          "action_id": "category_others"
+        }
+      ]
+    },
+    {
+      "type": "context",
+      "elements": [
+        {
+          "type": "mrkdwn",
+          "text": "💡 *Tip: You can also type your question directly and I'll try to help!*"
+        }
+      ]
+    }
+  ];
+}
+
+// Function to create subcategory selection blocks
+function createSubcategoryBlocks(categoryKey) {
+  const category = HELP_CATEGORIES[categoryKey];
+  if (!category) return [];
+
+  const blocks = [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": category.title,
+        "emoji": true
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": `${category.description}\n\nChoose a specific topic:`
+      }
+    },
+    {
+      "type": "divider"
+    }
+  ];
+
+  // Add subcategory buttons
+  for (let i = 0; i < category.subcategories.length; i += 2) {
+    const elements = [];
+    
+    // Add first button
+    elements.push({
+      "type": "button",
+      "text": {
+        "type": "plain_text",
+        "text": category.subcategories[i].text,
+        "emoji": true
+      },
+      "value": category.subcategories[i].value,
+      "action_id": `subcategory_${category.subcategories[i].value}`
+    });
+    
+    // Add second button if exists
+    if (i + 1 < category.subcategories.length) {
+      elements.push({
+        "type": "button",
+        "text": {
+          "type": "plain_text",
+          "text": category.subcategories[i + 1].text,
+          "emoji": true
+        },
+        "value": category.subcategories[i + 1].value,
+        "action_id": `subcategory_${category.subcategories[i + 1].value}`
+      });
+    }
+    
+    blocks.push({
+      "type": "actions",
+      "elements": elements
+    });
+  }
+
+  // Add back button
+  blocks.push({
+    "type": "divider"
+  });
+  blocks.push({
+    "type": "actions",
+    "elements": [
+      {
+        "type": "button",
+        "text": {
+          "type": "plain_text",
+          "text": "⬅️ Back to Categories",
+          "emoji": true
+        },
+        "value": "back",
+        "action_id": "back_to_categories"
+      }
+    ]
+  });
+
+  return blocks;
+}
+
+// Function to get subcategory specific help
+function getSubcategoryHelp(subcategoryValue) {
+  const helpContent = {
+    // Zoom subcategories
+    "zoom_join": "**Joining Zoom Meetings:**\n\n• To join the Zoom session, make sure you have created a Zoom account using your official email, verified it, and clicked the meeting link provided in the invitation email\n• Open the calendar event on your device and click the Zoom meeting link\n• You can join via browser or the Zoom app\n\n*Common questions: \"How can I join the zoom session?\", \"How do I join zoom?\"*",
+    
+    "zoom_issues": "**Meeting Issues & Troubleshooting:**\n\n• If the Zoom link doesn't work, try copying and pasting the full URL into your browser\n• Download the Zoom app from zoom.us/download if needed\n• You can rejoin anytime by clicking the calendar link again\n• Contact the meeting organizer for technical issues\n\n*Common questions: \"Zoom link doesn't work\", \"What if I join late?\"*",
+    
+    "zoom_audio": "**Audio & Video Setup:**\n\n• When you open the Zoom link, you can test your microphone and camera on the preview screen before joining\n• Check if your audio is muted or video is turned off\n• Verify your device's volume and permissions for Zoom to access your microphone and camera\n\n*Common questions: \"How to test audio video?\", \"Can't hear or see anything\"*",
+    
+    "zoom_account": "**Account & Access:**\n\n• No, you don't need a Zoom account to join most meetings - just click the link and enter your name\n• The passcode will be included in the calendar event description\n• Yes, you can join through a web browser instead of the app\n\n*Common questions: \"Do I need a Zoom account?\", \"What about passcode?\"*",
+    
+    "zoom_devices": "**Device Support:**\n\n• Yes! Install the Zoom app on your iOS or Android device, then click the calendar link to join\n• When prompted to open the Zoom app, you can select the option to join from your browser instead\n\n*Common questions: \"Can I join from phone?\", \"Browser vs app?\"*",
+    
+    // Enqurious Platform subcategories
+    "platform_login": "**Platform Access & Login:**\n\n• Access the learning portal at: https://www.tredence.enqurious.com/auth/login?redirect_uri=/\n• Use the login credentials sent to your company email\n• Enter your registered email and password - use 'Forgot password?' if needed\n• After login, you can change your password and username\n\n*Common questions: \"How to log into Enqurious?\", \"What login info do I need?\"*",
+    
+    "platform_navigation": "**Navigation & Interface:**\n\n• **Filters**: Status Filter (Pending/Completed), Label Filter (by tags), Type Filter (Scenario, Project, Masterclass, Skill Path)\n• **Dashboard**: Shows total tasks assigned, completed, and pending\n• **Status Indicators**: Submission Deadline Expired, Running Behind Schedule, Upcoming\n• **Timeline**: Right side of dashboard shows deadlines and status updates\n\n*Common questions: \"How to use filters?\", \"What do status indicators mean?\"*",
+    
+    "platform_content": "**Content Types & Learning:**\n\n• **Skill Path**: Learning journey - structured sequence of activities\n• **Hackathon**: Competitive event with time limits\n• **Masterclass**: Expert-led sessions\n• **Project**: Practical assignments\n• **Scenario**: Real-world case studies\n• **Skills & Tools**: Shown as tags related to each task\n\n*Common questions: \"What is skill path?\", \"What do different labels mean?\"*",
+    
+    "platform_tasks": "**Task Management:**\n\n• **Resume Tasks**: Click 'Resume Now' button under the task\n• **Navigation**: Use navigation or progress bar inside tasks to move between modules\n• **Task Status**: Completed (finished tasks) vs Pending (yet to be completed)\n• **Learning Objectives**: Find in the 'Learning objectives' section within each task\n\n*Common questions: \"How to resume a task?\", \"How to navigate between modules?\"*",
+    
+    "platform_submissions": "**Submissions & Feedback:**\n\n• **View Results**: Depends on access granted by client admin\n• **View Submission Button**: Lets you review submitted work (if enabled)\n• **Missed Deadlines**: Platform shows 'Submission deadline expired' - contact administrator\n• **Scores & Feedback**: Availability depends on content creator's settings\n\n*Common questions: \"How to view my scores?\", \"What if I miss deadline?\"*",
+    
+    "platform_assessments": "**Assessments & Deadlines:**\n\n• **Mock Tests**: Timeline cannot be extended without approval from the TALL Team\n• **Self-Paced Modules**: Timeline is for reference only - complete at your own pace\n• **Assessment Types**: Mock tests to be attempted at the end of the program\n• **Learning vs Assessment**: Learning = self-study modules, Assessment = mock tests\n\n*Common questions: \"Can we extend mock test timeline?\", \"Do I need to complete modules on time?\"*",
+    
+    // Content & Resources subcategories
+    "content_recordings": "**Session Recordings:**\n\n• Access recordings here: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing\n• Recordings usually take 1-2 days to be uploaded after a session\n• If you can't find a specific recording after 2 days, inform your mentor\n\n*Common questions: \"Where can I find recordings?\", \"Session recordings\"*",
+    
+    "content_calendar": "**Learning Calendar:**\n\n• Check the Learning calendar here: https://docs.google.com/spreadsheets/d/11kw1hvG5dLX9a6GwRd1UF_Mq9ivgCJvr-_2mtd6Z7OQ/edit?gid=0#gid=0\n• Shows your schedule including learning modules, ILTs, and assessments\n• Check if you have any ILTs on specific dates\n\n*Common questions: \"Where is learning calendar?\", \"How to check ILT schedule?\"*",
+    
+    "content_resources": "**Resource Links:**\n\n• **Learning Portal**: https://www.tredence.enqurious.com/auth/login?redirect_uri=/\n• **Tutorial Videos**: Available for platform guidance\n• **Calendar Access**: For scheduling and timeline information\n\n*Common questions: \"Portal access\", \"Resource links\"*",
+    
+    // Support subcategories
+    "support_platform": "**Platform Issues:**\n\n• For technical issues accessing tasks or content, contact: **notifications@enqurious.com**\n• Also reach out to your internal support team\n• For login issues: try different browser, clear cache, use 'Forgot Password'\n\n*Common questions: \"Platform not working\", \"Can't access content\"*",
+    
+    "support_general": "**General Help:**\n\n• For questions I can't answer confidently, contact <@abhilipsha>\n• **ILT Definition**: Instructor-Led Training - live sessions with mentors\n• **General Assistance**: I can help with Zoom, platform features, deadlines\n\n*Common questions: \"What is ILT?\", \"General help\"*",
+    
+    // Others subcategories
+    "others_general": "**General Queries:**\n\n• For questions not covered in other categories\n• Specific situations not covered in standard help\n• Custom help requests\n\n*If your question isn't answered, please contact <@abhilipsha> for personalized assistance.*",
+    
+    "others_contact": "**Contact Human Support:**\n\n• For complex issues beyond my capabilities, contact <@abhilipsha>\n• For platform technical support: notifications@enqurious.com\n• For learning assistance and guidance: Your mentors and instructors\n\n*I'm here to help with common questions, but humans are better for complex, specific issues.*"
+  };
+
+  return helpContent[subcategoryValue] || "I don't have specific information for this topic. Please contact <@abhilipsha> for assistance.";
 }
 
 // Simple channel context - NO program name extraction to avoid conflicts
@@ -473,7 +720,7 @@ async function addPredefinedQAs() {
       answer: "Contact the meeting organizer or your IT support for assistance."
     },
     
-    // ENQURIOUS PLATFORM FAQs
+    // ENQURIOUS PLATFORM FAQs (all 21 from the document)
     {
       question: "How can I use the filter options to find specific content on the learner platform?",
       answer: "The learner platform provides several filter options to help you find specific content easily: Status Filter (filter content based on completion status - Pending or Completed), Label Filter (filter by specific labels or tags assigned to content), Type Filter (choose content type such as Scenario, Project, Masterclass, or Skill Path), and Content Type Filter (narrow down content based on your learning preferences). Using these filters helps you quickly find and navigate your learning content."
@@ -581,9 +828,9 @@ const app = new App({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
 
-console.log("🚀 USING CONSOLIDATED BOT VERSION WITH ENQURIOUS PLATFORM FAQS - SINGLE RESPONSE, NO CONFLICTS");
+console.log("🚀 USING INTERACTIVE BOT VERSION WITH CATEGORY SELECTION - SINGLE RESPONSE, NO CONFLICTS");
 
-// SINGLE MESSAGE HANDLER - No external modules to cause conflicts
+// MAIN MESSAGE HANDLER with interactive features
 app.message(async ({ message, say, client }) => {
   // Skip messages from bots
   if (message.subtype === 'bot_message') return;
@@ -592,6 +839,7 @@ app.message(async ({ message, say, client }) => {
   
   try {
     const originalText = message.text || '';
+    const normalizedText = originalText.toLowerCase().trim();
     let response = null;
     let matched = false;
     
@@ -599,15 +847,15 @@ app.message(async ({ message, say, client }) => {
     const context = await getSimpleChannelContext(message, client);
     
     // DATABASE STATUS COMMAND - only works for admin
-    if (originalText.toLowerCase().trim() === '!dbping' && (message.user === process.env.ADMIN_USER_ID)) {
+    if (normalizedText === '!dbping' && (message.user === process.env.ADMIN_USER_ID)) {
       const status = await pingDatabase();
       await say(`Database status: ${status.connected ? "✅" : "❌"} ${status.message}`);
       return;
     }
     
     // DATABASE CLEAR COMMANDS - only works for admin
-    if (originalText.toLowerCase().startsWith('!clear') && (message.user === process.env.ADMIN_USER_ID)) {
-      const clearType = originalText.toLowerCase().split(' ')[1] || 'help';
+    if (normalizedText.startsWith('!clear') && (message.user === process.env.ADMIN_USER_ID)) {
+      const clearType = normalizedText.split(' ')[1] || 'help';
       
       if (clearType === 'learned') {
         try {
@@ -666,7 +914,7 @@ app.message(async ({ message, say, client }) => {
     }
     
     // DEBUG COMMANDS - search and inspect the knowledge base
-    if (originalText.toLowerCase().startsWith('!debug ')) {
+    if (normalizedText.startsWith('!debug ')) {
       // Only allow admin users to use debug commands
       if (message.user === process.env.ADMIN_USER_ID) {
         const searchTerm = originalText.replace(/!debug /i, '').trim();
@@ -698,8 +946,8 @@ app.message(async ({ message, say, client }) => {
     }
     
     // ADMIN REPORTS
-    if (originalText.toLowerCase().startsWith('!report') && (message.user === process.env.ADMIN_USER_ID)) {
-      const reportType = originalText.toLowerCase().split(' ')[1] || 'frequent';
+    if (normalizedText.startsWith('!report') && (message.user === process.env.ADMIN_USER_ID)) {
+      const reportType = normalizedText.split(' ')[1] || 'frequent';
       
       if (reportType === 'frequent') {
         const questions = await getFrequentQuestions(10);
@@ -751,6 +999,15 @@ app.message(async ({ message, say, client }) => {
       }
     }
     
+    // INTERACTIVE MENU TRIGGER - if user says "help", "menu", "categories"
+    if (normalizedText === 'help' || normalizedText === 'menu' || normalizedText === 'categories' || 
+        normalizedText === 'options' || normalizedText === 'what can you help with') {
+      await say({
+        blocks: createMainCategoryBlocks()
+      });
+      return;
+    }
+    
     // STEP 1: Check for high-confidence learned answers FIRST
     console.log(`Checking for learned answer...`);
     let learnedResponse = null;
@@ -777,16 +1034,63 @@ app.message(async ({ message, say, client }) => {
       }
     }
     
-    // STEP 3: If no confident answer found, direct to contact person
+    // STEP 3: If no confident answer found, offer interactive menu OR direct to contact person
     if (!matched) {
-      console.log('No confident answer found, directing to contact person');
-      response = "I'm not sure about that specific question. For assistance with questions I can't answer confidently, please contact <@abhilipsha> who can help you better.";
+      console.log('No confident answer found, offering interactive menu');
+      
+      // If message looks like a question, offer both menu and contact
+      if (originalText.includes('?') || originalText.toLowerCase().includes('how') || 
+          originalText.toLowerCase().includes('what') || originalText.toLowerCase().includes('where')) {
+        await say({
+          text: "I'm not sure about that specific question. You can:",
+          blocks: [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "I'm not sure about that specific question. You can:"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "📋 Browse Help Categories",
+                    "emoji": true
+                  },
+                  "value": "show_categories",
+                  "action_id": "show_main_categories"
+                },
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "👤 Contact Human Support",
+                    "emoji": true
+                  },
+                  "value": "contact_human",
+                  "action_id": "contact_human_support"
+                }
+              ]
+            }
+          ]
+        });
+      } else {
+        // For non-questions, just show the interactive menu
+        await say({
+          blocks: createMainCategoryBlocks()
+        });
+      }
       matched = false;
+      response = "Interactive menu offered";
+    } else {
+      // Send SINGLE response - no additional customization to avoid conflicts
+      await say(response);
+      console.log('Sent single response:', response);
     }
-    
-    // Send SINGLE response - no additional customization to avoid conflicts
-    await say(response);
-    console.log('Sent single response:', response);
     
     // Log the question to MongoDB if connected
     if (isConnected) {
@@ -825,7 +1129,161 @@ app.message(async ({ message, say, client }) => {
   }
 });
 
-// App mention handler - also consolidated, no conflicts
+// INTERACTIVE BUTTON HANDLERS
+
+// Handle main category selection
+app.action(/^category_(.+)$/, async ({ body, ack, say, action }) => {
+  await ack();
+  
+  const categoryKey = action.value;
+  
+  if (categoryKey === 'others') {
+    // Special handling for "Others" category
+    await say({
+      text: "For questions not covered in our standard categories, please contact human support:",
+      blocks: [
+        {
+          "type": "header",
+          "text": {
+            "type": "plain_text",
+            "text": "❓ Other Questions",
+            "emoji": true
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "For questions not covered in our standard categories:"
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "• **Complex or specific issues** not covered in the help categories\n• **Custom situations** requiring personalized guidance\n• **Feedback and suggestions** for improving the platform\n• **Administrative matters** beyond standard support"
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "**Contact for assistance:**\n• **Learning Support**: <@abhilipsha> for questions I can't answer\n• **Platform Technical Issues**: notifications@enqurious.com\n• **Your mentors and instructors** for course-specific guidance"
+          }
+        },
+        {
+          "type": "actions",
+          "elements": [
+            {
+              "type": "button",
+              "text": {
+                "type": "plain_text",
+                "text": "⬅️ Back to Categories",
+                "emoji": true
+              },
+              "value": "back",
+              "action_id": "back_to_categories"
+            }
+          ]
+        }
+      ]
+    });
+  } else {
+    // Show subcategories for the selected category
+    await say({
+      blocks: createSubcategoryBlocks(categoryKey)
+    });
+  }
+});
+
+// Handle subcategory selection
+app.action(/^subcategory_(.+)$/, async ({ body, ack, say, action }) => {
+  await ack();
+  
+  const subcategoryValue = action.value;
+  const helpContent = getSubcategoryHelp(subcategoryValue);
+  
+  // Extract category from subcategory value
+  const categoryKey = subcategoryValue.split('_')[0];
+  const category = HELP_CATEGORIES[categoryKey];
+  const subcategory = category?.subcategories.find(sub => sub.value === subcategoryValue);
+  
+  await say({
+    text: helpContent,
+    blocks: [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": subcategory ? subcategory.text : "Help Information",
+          "emoji": true
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": helpContent
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "text": {
+              "type": "plain_text",
+              "text": "⬅️ Back to Category",
+              "emoji": true
+            },
+            "value": categoryKey,
+            "action_id": `category_${categoryKey}`
+          },
+          {
+            "type": "button",
+            "text": {
+              "type": "plain_text",
+              "text": "🏠 Main Menu",
+              "emoji": true
+            },
+            "value": "main",
+            "action_id": "back_to_categories"
+          }
+        ]
+      }
+    ]
+  });
+});
+
+// Handle back to categories
+app.action('back_to_categories', async ({ body, ack, say }) => {
+  await ack();
+  
+  await say({
+    blocks: createMainCategoryBlocks()
+  });
+});
+
+// Handle show main categories
+app.action('show_main_categories', async ({ body, ack, say }) => {
+  await ack();
+  
+  await say({
+    blocks: createMainCategoryBlocks()
+  });
+});
+
+// Handle contact human support
+app.action('contact_human_support', async ({ body, ack, say }) => {
+  await ack();
+  
+  await say("I'll connect you with human support. Please contact <@abhilipsha> who can provide personalized assistance with your question.");
+});
+
+// App mention handler - also includes interactive features
 app.event('app_mention', async ({ event, say, client }) => {
   try {
     console.log('Received mention:', event.text);
@@ -842,7 +1300,7 @@ app.event('app_mention', async ({ event, say, client }) => {
         console.error('Error finding learned answer for mention:', error);
       }
       
-      let response = "I'm not sure about that specific question. For assistance with questions I can't answer confidently, please contact <@abhilipsha> who can help you better.";
+      let response = null;
       let matched = false;
       
       if (learnedResponse && learnedResponse.confidence > 0.8) {
@@ -860,11 +1318,20 @@ app.event('app_mention', async ({ event, say, client }) => {
         }
       }
       
-      // Send SINGLE response in thread
-      await say({
-        text: response,
-        thread_ts: event.ts
-      });
+      if (matched) {
+        // Send SINGLE response in thread
+        await say({
+          text: response,
+          thread_ts: event.ts
+        });
+      } else {
+        // Offer interactive menu for unmatched mentions
+        await say({
+          text: "I'm not sure about that specific question. Let me help you find what you need:",
+          thread_ts: event.ts,
+          blocks: createMainCategoryBlocks()
+        });
+      }
       
       // Log to MongoDB if connected
       if (isConnected) {
@@ -883,7 +1350,7 @@ app.event('app_mention', async ({ event, say, client }) => {
             event.channel,
             'mention-response',
             text,
-            response,
+            response || "Interactive menu offered",
             matched
           );
         } catch (loggingError) {
@@ -891,10 +1358,11 @@ app.event('app_mention', async ({ event, say, client }) => {
         }
       }
     } else {
-      // Just a mention with no specific question
+      // Just a mention with no specific question - show interactive menu
       await say({
-        text: "Hi there! I'm EnquBuddy, your learning assistant. I can help with specific questions about Zoom, recordings, learning portal, platform features, and deadlines. For other questions, please contact <@abhilipsha>.",
-        thread_ts: event.ts
+        text: "Hi there! I'm EnquBuddy, your learning assistant. How can I help you today?",
+        thread_ts: event.ts,
+        blocks: createMainCategoryBlocks()
       });
     }
   } catch (error) {
@@ -910,7 +1378,7 @@ app.event('app_mention', async ({ event, say, client }) => {
   }
 });
 
-// Home tab
+// Home tab - updated with interactive features
 app.event('app_home_opened', async ({ event, client }) => {
   try {
     // Get some stats if MongoDB is connected
@@ -944,7 +1412,7 @@ app.event('app_home_opened', async ({ event, client }) => {
             "type": "header",
             "text": {
               "type": "plain_text",
-              "text": "Learning Assistant Bot",
+              "text": "🤖 EnquBuddy Learning Assistant",
               "emoji": true
             }
           },
@@ -952,7 +1420,7 @@ app.event('app_home_opened', async ({ event, client }) => {
             "type": "section",
             "text": {
               "type": "mrkdwn",
-              "text": "Hello! 👋 I'm your learning assistant bot. I can help answer questions about your learning programs and platform."
+              "text": "Welcome to your interactive learning assistant! I can help you with questions about your learning journey."
             }
           },
           {
@@ -962,41 +1430,40 @@ app.event('app_home_opened', async ({ event, client }) => {
             "type": "section",
             "text": {
               "type": "mrkdwn",
-              "text": "*What I can help with (only specific questions):*"
+              "text": "*🔧 **Zoom & Meeting Support***\nHelp with joining meetings, audio/video setup, troubleshooting\n\n*🖥️ **Enqurious Learning Platform***\nComplete platform support - login, navigation, tasks, assessments\n\n*📹 **Content Access & Resources***\nSession recordings, learning calendar, resource links\n\n*🆘 **Support & Troubleshooting***\nPlatform issues, technical support, general help\n\n*❓ **Others***\nFor questions not covered above, I'll connect you with human support"
             }
           },
           {
             "type": "section",
             "text": {
               "type": "mrkdwn",
-              "text": "• 💻 *Zoom issues* - joining meetings, testing audio/video\n• 📝 *Learning modules* - accessing portal, deadlines\n• 🎓 *Mock tests* - deadline extension policies\n• 📹 *Recordings* - where to find session recordings\n• 🔑 *Portal access* - learning portal login\n• 📅 *Calendar* - learning calendar access\n• 🖥️ *Platform features* - filters, tasks, navigation\n• 📊 *Dashboard* - viewing progress, assignments\n• 🏷️ *Content types* - skill paths, projects, scenarios"
+              "text": "*How to get help:*\n• Type `help` or `menu` to see interactive categories\n• Ask me questions directly\n• Use @EnquBuddy in channels\n• For complex issues, I'll connect you with <@abhilipsha>"
             }
           },
           {
-            "type": "section",
-            "text": {
-              "type": "mrkdwn",
-              "text": "*For other questions, please contact <@abhilipsha>*"
-            }
-          },
-          {
-            "type": "divider"
-          },
-          {
-            "type": "context",
+            "type": "actions",
             "elements": [
               {
-                "type": "mrkdwn",
-                "text": `Database Status: ${dbStatus}`
+                "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "📋 Start Interactive Help",
+                  "emoji": true
+                },
+                "value": "start_help",
+                "action_id": "show_main_categories"
               }
             ]
           },
           {
+            "type": "divider"
+          },
+          {
             "type": "context",
             "elements": [
               {
                 "type": "mrkdwn",
-                "text": `📊 Bot Statistics: ${stats.total} questions processed (${matchRate}% confident answers)`
+                "text": `Database Status: ${dbStatus} | 📊 Questions Processed: ${stats.total} (${matchRate}% confident answers)`
               }
             ]
           }
@@ -1048,7 +1515,7 @@ const PORT = process.env.PORT || 3000;
     
     // Start the Slack app
     await app.start(PORT);
-    console.log(`⚡️ Educational Bot is running on port ${PORT}! Consolidated version with Enqurious platform FAQs - single responses only.`);
+    console.log(`⚡️ Educational Bot is running on port ${PORT}! Interactive version with category selection - single responses only.`);
   } catch (error) {
     console.error('Error starting the app:', error);
   }
