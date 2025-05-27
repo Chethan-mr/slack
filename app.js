@@ -89,6 +89,7 @@ function getDirectAnswer(text) {
     "session recordings": "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.",
     "recordings": "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.",
     "meeting recordings": "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.",
+    "session recording": "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.",
     
     // Zoom joining questions
     "how can i join the zoom session": "To join the Zoom session, make sure you have created a Zoom account using your official email, verified it, and clicked the meeting link provided in the invitation email.",
@@ -191,7 +192,7 @@ function getDirectAnswer(text) {
   
   // Recording patterns (very specific) - CHECK FIRST to avoid conflicts
   if ((normalizedText.includes('where') || normalizedText.includes('how') || normalizedText.includes('access') || normalizedText.includes('find')) &&
-      (normalizedText.includes('recording') || normalizedText.includes('recordings') || normalizedText.includes('session recording'))) {
+      (normalizedText.includes('recording') || normalizedText.includes('recordings') || normalizedText.includes('session recording') || normalizedText.includes('meeting recording'))) {
     return "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.";
   }
   
@@ -273,12 +274,14 @@ function getDirectAnswer(text) {
 // Function to determine which category a question belongs to
 function categorizeQuestion(question) {
   const normalizedText = question.toLowerCase();
+  console.log(`Categorizing question: "${normalizedText}"`);
   
   // Zoom-related keywords
   if (normalizedText.includes('zoom') || normalizedText.includes('meeting') || 
       normalizedText.includes('audio') || normalizedText.includes('video') || 
       normalizedText.includes('microphone') || normalizedText.includes('camera') ||
       normalizedText.includes('join') && (normalizedText.includes('session') || normalizedText.includes('call'))) {
+    console.log('Categorized as: zoom');
     return 'zoom';
   }
   
@@ -290,13 +293,18 @@ function categorizeQuestion(question) {
       normalizedText.includes('assignment') || normalizedText.includes('submission') ||
       normalizedText.includes('deadline') || normalizedText.includes('mock test') ||
       normalizedText.includes('assessment') || normalizedText.includes('module')) {
+    console.log('Categorized as: enqurious');
     return 'enqurious';
   }
   
   // Content and resources keywords
-  if (normalizedText.includes('recording') || normalizedText.includes('calendar') || 
-      normalizedText.includes('session recording') || normalizedText.includes('learning calendar') ||
-      normalizedText.includes('resource') || normalizedText.includes('link')) {
+  if (normalizedText.includes('recording') || normalizedText.includes('recordings') ||
+      normalizedText.includes('session recording') || normalizedText.includes('meeting recording') ||
+      normalizedText.includes('calendar') || normalizedText.includes('learning calendar') ||
+      normalizedText.includes('resource') || normalizedText.includes('link') ||
+      normalizedText.includes('where can i find') && normalizedText.includes('recording') ||
+      normalizedText.includes('how to access') && normalizedText.includes('recording')) {
+    console.log('Categorized as: content');
     return 'content';
   }
   
@@ -304,10 +312,12 @@ function categorizeQuestion(question) {
   if (normalizedText.includes('issue') || normalizedText.includes('problem') || 
       normalizedText.includes('trouble') || normalizedText.includes('error') ||
       normalizedText.includes('help') || normalizedText.includes('support')) {
+    console.log('Categorized as: support');
     return 'support';
   }
   
   // Default to showing all categories
+  console.log('No specific category detected, showing all categories');
   return null;
 }
 function createMainCategoryBlocks() {
@@ -496,40 +506,40 @@ function createSubcategoryBlocks(categoryKey) {
 function getSubcategoryHelp(subcategoryValue) {
   const helpContent = {
     // Zoom subcategories
-    "zoom_join": "**Joining Zoom Meetings:**\n\n• To join the Zoom session, make sure you have created a Zoom account using your official email, verified it, and clicked the meeting link provided in the invitation email\n• Open the calendar event on your device and click the Zoom meeting link\n• You can join via browser or the Zoom app\n\n*Common questions: \"How can I join the zoom session?\", \"How do I join zoom?\"*",
+    "zoom_join": "**Joining Zoom Meetings:**\n\n• To join the Zoom session, make sure you have created a Zoom account using your official email, verified it, and clicked the meeting link provided in the invitation email\n• Open the calendar event on your device and click the Zoom meeting link\n• You can join via browser or the Zoom app",
     
-    "zoom_issues": "**Meeting Issues & Troubleshooting:**\n\n• If the Zoom link doesn't work, try copying and pasting the full URL into your browser\n• Download the Zoom app from zoom.us/download if needed\n• You can rejoin anytime by clicking the calendar link again\n• Contact the meeting organizer for technical issues\n\n*Common questions: \"Zoom link doesn't work\", \"What if I join late?\"*",
+    "zoom_issues": "**Meeting Issues & Troubleshooting:**\n\n• If the Zoom link doesn't work, try copying and pasting the full URL into your browser\n• Download the Zoom app from zoom.us/download if needed\n• You can rejoin anytime by clicking the calendar link again\n• Contact the meeting organizer for technical issues",
     
-    "zoom_audio": "**Audio & Video Setup:**\n\n• When you open the Zoom link, you can test your microphone and camera on the preview screen before joining\n• Check if your audio is muted or video is turned off\n• Verify your device's volume and permissions for Zoom to access your microphone and camera\n\n*Common questions: \"How to test audio video?\", \"Can't hear or see anything\"*",
+    "zoom_audio": "**Audio & Video Setup:**\n\n• When you open the Zoom link, you can test your microphone and camera on the preview screen before joining\n• Check if your audio is muted or video is turned off\n• Verify your device's volume and permissions for Zoom to access your microphone and camera",
     
-    "zoom_account": "**Account & Access:**\n\n• No, you don't need a Zoom account to join most meetings - just click the link and enter your name\n• The passcode will be included in the calendar event description\n• Yes, you can join through a web browser instead of the app\n\n*Common questions: \"Do I need a Zoom account?\", \"What about passcode?\"*",
+    "zoom_account": "**Account & Access:**\n\n• No, you don't need a Zoom account to join most meetings - just click the link and enter your name\n• The passcode will be included in the calendar event description\n• Yes, you can join through a web browser instead of the app",
     
-    "zoom_devices": "**Device Support:**\n\n• Yes! Install the Zoom app on your iOS or Android device, then click the calendar link to join\n• When prompted to open the Zoom app, you can select the option to join from your browser instead\n\n*Common questions: \"Can I join from phone?\", \"Browser vs app?\"*",
+    "zoom_devices": "**Device Support:**\n\n• Yes! Install the Zoom app on your iOS or Android device, then click the calendar link to join\n• When prompted to open the Zoom app, you can select the option to join from your browser instead",
     
     // Enqurious Platform subcategories
-    "platform_login": "**Platform Access & Login:**\n\n• Access the learning portal at: https://www.tredence.enqurious.com/auth/login?redirect_uri=/\n• Use the login credentials sent to your company email\n• Enter your registered email and password - use 'Forgot password?' if needed\n• After login, you can change your password and username\n\n*Common questions: \"How to log into Enqurious?\", \"What login info do I need?\"*",
+    "platform_login": "**Platform Access & Login:**\n\n• Access the learning portal at: https://www.tredence.enqurious.com/auth/login?redirect_uri=/\n• Use the login credentials sent to your company email\n• Enter your registered email and password - use 'Forgot password?' if needed\n• After login, you can change your password and username",
     
-    "platform_navigation": "**Navigation & Interface:**\n\n• **Filters**: Status Filter (Pending/Completed), Label Filter (by tags), Type Filter (Scenario, Project, Masterclass, Skill Path)\n• **Dashboard**: Shows total tasks assigned, completed, and pending\n• **Status Indicators**: Submission Deadline Expired, Running Behind Schedule, Upcoming\n• **Timeline**: Right side of dashboard shows deadlines and status updates\n\n*Common questions: \"How to use filters?\", \"What do status indicators mean?\"*",
+    "platform_navigation": "**Navigation & Interface:**\n\n• **Filters**: Status Filter (Pending/Completed), Label Filter (by tags), Type Filter (Scenario, Project, Masterclass, Skill Path)\n• **Dashboard**: Shows total tasks assigned, completed, and pending\n• **Status Indicators**: Submission Deadline Expired, Running Behind Schedule, Upcoming\n• **Timeline**: Right side of dashboard shows deadlines and status updates",
     
-    "platform_content": "**Content Types & Learning:**\n\n• **Skill Path**: Learning journey - structured sequence of activities\n• **Hackathon**: Competitive event with time limits\n• **Masterclass**: Expert-led sessions\n• **Project**: Practical assignments\n• **Scenario**: Real-world case studies\n• **Skills & Tools**: Shown as tags related to each task\n\n*Common questions: \"What is skill path?\", \"What do different labels mean?\"*",
+    "platform_content": "**Content Types & Learning:**\n\n• **Skill Path**: Learning journey - structured sequence of activities\n• **Hackathon**: Competitive event with time limits\n• **Masterclass**: Expert-led sessions\n• **Project**: Practical assignments\n• **Scenario**: Real-world case studies\n• **Skills & Tools**: Shown as tags related to each task",
     
-    "platform_tasks": "**Task Management:**\n\n• **Resume Tasks**: Click 'Resume Now' button under the task\n• **Navigation**: Use navigation or progress bar inside tasks to move between modules\n• **Task Status**: Completed (finished tasks) vs Pending (yet to be completed)\n• **Learning Objectives**: Find in the 'Learning objectives' section within each task\n\n*Common questions: \"How to resume a task?\", \"How to navigate between modules?\"*",
+    "platform_tasks": "**Task Management:**\n\n• **Resume Tasks**: Click 'Resume Now' button under the task\n• **Navigation**: Use navigation or progress bar inside tasks to move between modules\n• **Task Status**: Completed (finished tasks) vs Pending (yet to be completed)\n• **Learning Objectives**: Find in the 'Learning objectives' section within each task",
     
-    "platform_submissions": "**Submissions & Feedback:**\n\n• **View Results**: Depends on access granted by client admin\n• **View Submission Button**: Lets you review submitted work (if enabled)\n• **Missed Deadlines**: Platform shows 'Submission deadline expired' - contact administrator\n• **Scores & Feedback**: Availability depends on content creator's settings\n\n*Common questions: \"How to view my scores?\", \"What if I miss deadline?\"*",
+    "platform_submissions": "**Submissions & Feedback:**\n\n• **View Results**: Depends on access granted by client admin\n• **View Submission Button**: Lets you review submitted work (if enabled)\n• **Missed Deadlines**: Platform shows 'Submission deadline expired' - contact administrator\n• **Scores & Feedback**: Availability depends on content creator's settings",
     
-    "platform_assessments": "**Assessments & Deadlines:**\n\n• **Mock Tests**: Timeline cannot be extended without approval from the TALL Team\n• **Self-Paced Modules**: Timeline is for reference only - complete at your own pace\n• **Assessment Types**: Mock tests to be attempted at the end of the program\n• **Learning vs Assessment**: Learning = self-study modules, Assessment = mock tests\n\n*Common questions: \"Can we extend mock test timeline?\", \"Do I need to complete modules on time?\"*",
+    "platform_assessments": "**Assessments & Deadlines:**\n\n• **Mock Tests**: Timeline cannot be extended without approval from the TALL Team\n• **Self-Paced Modules**: Timeline is for reference only - complete at your own pace\n• **Assessment Types**: Mock tests to be attempted at the end of the program\n• **Learning vs Assessment**: Learning = self-study modules, Assessment = mock tests",
     
     // Content & Resources subcategories
-    "content_recordings": "**Session Recordings:**\n\n• Access recordings here: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing\n• Recordings usually take 1-2 days to be uploaded after a session\n• If you can't find a specific recording after 2 days, inform your mentor\n\n*Common questions: \"Where can I find recordings?\", \"Session recordings\"*",
+    "content_recordings": "**Session Recordings:**\n\n• Access recordings here: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing\n• Recordings usually take 1-2 days to be uploaded after a session\n• If you can't find a specific recording after 2 days, inform your mentor",
     
-    "content_calendar": "**Learning Calendar:**\n\n• Check the Learning calendar here: https://docs.google.com/spreadsheets/d/11kw1hvG5dLX9a6GwRd1UF_Mq9ivgCJvr-_2mtd6Z7OQ/edit?gid=0#gid=0\n• Shows your schedule including learning modules, ILTs, and assessments\n• Check if you have any ILTs on specific dates\n\n*Common questions: \"Where is learning calendar?\", \"How to check ILT schedule?\"*",
+    "content_calendar": "**Learning Calendar:**\n\n• Check the Learning calendar here: https://docs.google.com/spreadsheets/d/11kw1hvG5dLX9a6GwRd1UF_Mq9ivgCJvr-_2mtd6Z7OQ/edit?gid=0#gid=0\n• Shows your schedule including learning modules, ILTs, and assessments\n• Check if you have any ILTs on specific dates",
     
-    "content_resources": "**Resource Links:**\n\n• **Learning Portal**: https://www.tredence.enqurious.com/auth/login?redirect_uri=/\n• **Tutorial Videos**: Available for platform guidance\n• **Calendar Access**: For scheduling and timeline information\n\n*Common questions: \"Portal access\", \"Resource links\"*",
+    "content_resources": "**Resource Links:**\n\n• **Learning Portal**: https://www.tredence.enqurious.com/auth/login?redirect_uri=/\n• **Tutorial Videos**: Available for platform guidance\n• **Calendar Access**: For scheduling and timeline information",
     
     // Support subcategories
-    "support_platform": "**Platform Issues:**\n\n• For technical issues accessing tasks or content, contact: **notifications@enqurious.com**\n• Also reach out to your internal support team\n• For login issues: try different browser, clear cache, use 'Forgot Password'\n\n*Common questions: \"Platform not working\", \"Can't access content\"*",
+    "support_platform": "**Platform Issues:**\n\n• For technical issues accessing tasks or content, contact: **notifications@enqurious.com**\n• Also reach out to your internal support team\n• For login issues: try different browser, clear cache, use 'Forgot Password'",
     
-    "support_general": "**General Help:**\n\n• For questions I can't answer confidently, contact <@abhilipsha>\n• **ILT Definition**: Instructor-Led Training - live sessions with mentors\n• **General Assistance**: I can help with Zoom, platform features, deadlines\n\n*Common questions: \"What is ILT?\", \"General help\"*",
+    "support_general": "**General Help:**\n\n• For questions I can't answer confidently, contact <@abhilipsha>\n• **ILT Definition**: Instructor-Led Training - live sessions with mentors\n• **General Assistance**: I can help with Zoom, platform features, deadlines",
     
     // Others subcategories
     "others_general": "**General Queries:**\n\n• For questions not covered in other categories\n• Specific situations not covered in standard help\n• Custom help requests\n\n*If your question isn't answered, please contact <@abhilipsha> for personalized assistance.*",
