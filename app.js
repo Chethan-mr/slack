@@ -525,7 +525,7 @@ function getSubcategoryHelp(subcategoryValue) {
     
     "platform_tasks": "**Task Management:**\n\n• **Resume Tasks**: Click 'Resume Now' button under the task\n• **Navigation**: Use navigation or progress bar inside tasks to move between modules\n• **Task Status**: Completed (finished tasks) vs Pending (yet to be completed)\n• **Learning Objectives**: Find in the 'Learning objectives' section within each task",
     
-    "platform_submissions": "**Submissions & Feedback:**\n\n• **View Results**: Depends on access granted by client admin\n• **View Submission Button**: Lets you review submitted work (if enabled)\n• **Missed Deadlines**: Platform shows 'Submission deadline expired' - contact administrator\n• **Scores & Feedback**: Availability depends on content creator's settings",
+    "platform_submissions": "**Submissions & Feedback:**\n\n• **View Results**: Depends on access granted by client admin\n• **View Submission Button**: Lets you review submitted work (if enabled)\n• **Missed Deadlines**: Platform shows 'Submission deadline expired' - contact mentor\n• **Scores & Feedback**: Depends on access granted by client admin",
     
     "platform_assessments": "**Assessments & Deadlines:**\n\n• **Mock Tests**: Timeline cannot be extended without approval from the TALL Team\n• **Self-Paced Modules**: Timeline is for reference only - complete at your own pace\n• **Assessment Types**: Mock tests to be attempted at the end of the program\n• **Learning vs Assessment**: Learning = self-study modules, Assessment = mock tests",
     
