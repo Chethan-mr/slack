@@ -1637,6 +1637,12 @@ const PORT = process.env.PORT || 3000;
       console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     });
     
+    // Add unhandled exception handler
+    process.on('uncaughtException', (error) => {
+      console.error('Uncaught Exception:', error);
+      process.exit(1);
+    });
+    
     // First try to connect to MongoDB
     const dbConnected = await connectToMongoDB();
     if (dbConnected) {
@@ -1666,6 +1672,7 @@ const PORT = process.env.PORT || 3000;
     console.log(`⚡️ Smart Educational Bot is running on port ${PORT}! Shows relevant category sections based on question type.`);
   } catch (error) {
     console.error('Error starting the app:', error);
+    process.exit(1);
   }
 })();
 
