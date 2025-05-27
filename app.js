@@ -33,6 +33,11 @@ function getDirectAnswer(text) {
     "thanks": "You're welcome! Feel free to ask if you have any other questions.",
     "thx": "You're welcome! Feel free to ask if you have any other questions.",
     
+    // Short phrases for common questions
+    "session recordings": "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.",
+    "recordings": "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.",
+    "meeting recordings": "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.",
+    
     // Zoom joining questions
     "how can i join the zoom session": "To join the Zoom session, make sure you have created a Zoom account using your official email, verified it, and clicked the meeting link provided in the invitation email.",
     "how do i join zoom": "To join the Zoom session, make sure you have created a Zoom account using your official email, verified it, and clicked the meeting link provided in the invitation email.",
@@ -64,13 +69,21 @@ function getDirectAnswer(text) {
     "can we extend mock test deadline": "No, we cannot extend the timeline for the mock test and partial mock test. These are already being worked on by the TALL Team and can only be changed or extended upon their approval. So kindly keep up with the Learning calendar.",
     "can the timeline for the mock test and partial mock test be extended": "No, timelines for mock tests cannot be extended without approval from the team. Please adhere to the learning calendar.",
     
-    // What do terms mean
+    // What do terms mean - EXPANDED with individual terms
     "what is ilt": "ILT stands for Instructor-Led Training. These are live sessions conducted by mentors on Zoom where you can ask questions, discuss problems, and gain deeper insights.",
     "what does ilt mean": "ILT stands for Instructor-Led Training. These are live sessions conducted by mentors on Zoom where you can ask questions, discuss problems, and gain deeper insights.",
     "what is learning": "In the Learning Calendar, 'Learning' refers to self-study modules available on the Enqurious learning portal.",
     "what is assessment": "Assessment refers to mock tests to be attempted at the end of the program.",
     "what do learning and assessment mean": "Learning: Self-study modules available on the portal. Assessment: Mock tests to be attempted at the end of the program.",
     "what do learning and assessment mean on the platform": "Learning: Self-study modules available on the portal. Assessment: Mock tests to be attempted at the end of the program.",
+    
+    // Individual platform terms
+    "what is skill path": "Skill Path is a learning journey - a structured sequence of learning activities designed to help you develop specific skills.",
+    "what is a skill path": "Skill Path is a learning journey - a structured sequence of learning activities designed to help you develop specific skills.",
+    "what is hackathon": "Hackathon is a competitive event where participants work on projects within a time limit.",
+    "what is masterclass": "Masterclass is an expert-led session where industry experts share their knowledge and insights.",
+    "what is project": "Project refers to practical assignments that help you apply what you've learned in real-world scenarios.",
+    "what is scenario": "Scenario refers to real-world case studies that help you practice problem-solving skills.",
     
     // Self-paced modules
     "can i complete modules at my own pace": "Yes, you don't have to complete self-paced modules within the given time. The time mentioned is just for your reference. You can complete the modules at your own pace.",
@@ -160,6 +173,12 @@ function getDirectAnswer(text) {
   
   // HIGH CONFIDENCE PATTERN MATCHING - Only very specific patterns
   
+  // Recording patterns (very specific) - CHECK FIRST to avoid conflicts
+  if ((normalizedText.includes('where') || normalizedText.includes('how') || normalizedText.includes('access') || normalizedText.includes('find')) &&
+      (normalizedText.includes('recording') || normalizedText.includes('recordings') || normalizedText.includes('session recording'))) {
+    return "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.";
+  }
+  
   // Mock test extension patterns (very specific)
   if (normalizedText.includes('extend') && 
       (normalizedText.includes('mock test') || normalizedText.includes('partial mock test')) &&
@@ -167,7 +186,7 @@ function getDirectAnswer(text) {
     return "No, we cannot extend the timeline for the mock test and partial mock test. These are already being worked on by the TALL Team and can only be changed or extended upon their approval. So kindly keep up with the Learning calendar.";
   }
   
-  // Zoom join patterns (very specific)
+  // Zoom join patterns (very specific) - MOVED AFTER recordings to avoid conflicts
   if ((normalizedText.includes('how') && normalizedText.includes('join') && normalizedText.includes('zoom')) ||
       (normalizedText.includes('join') && normalizedText.includes('zoom') && normalizedText.includes('session'))) {
     return "To join the Zoom session, make sure you have created a Zoom account using your official email, verified it, and clicked the meeting link provided in the invitation email.";
@@ -178,12 +197,6 @@ function getDirectAnswer(text) {
       (normalizedText.includes('audio') || normalizedText.includes('video') || 
        normalizedText.includes('microphone') || normalizedText.includes('camera'))) {
     return "When you open the Zoom link, you can test your microphone and camera on the preview screen before joining the meeting.";
-  }
-  
-  // Recording patterns (very specific)
-  if ((normalizedText.includes('where') || normalizedText.includes('how') || normalizedText.includes('access')) &&
-      (normalizedText.includes('recording') || normalizedText.includes('recordings'))) {
-    return "You can access session recordings through this link: https://drive.google.com/drive/folders/1I6wXvcKTyXzxsQd19SpOmFrbIWta7vnq?usp=sharing. Recordings usually take 1-2 days to be uploaded after a session.";
   }
   
   // Portal patterns (very specific)
@@ -216,6 +229,25 @@ function getDirectAnswer(text) {
   if ((normalizedText.includes('issue') || normalizedText.includes('problem') || normalizedText.includes('trouble')) && 
       (normalizedText.includes('access') || normalizedText.includes('content') || normalizedText.includes('platform'))) {
     return "Contact support at notifications@enqurious.com or your internal support team.";
+  }
+  
+  // Individual term questions (what is X)
+  if (normalizedText.includes('what is') || normalizedText.includes('what are')) {
+    if (normalizedText.includes('skill path')) {
+      return "Skill Path is a learning journey - a structured sequence of learning activities designed to help you develop specific skills.";
+    }
+    if (normalizedText.includes('hackathon')) {
+      return "Hackathon is a competitive event where participants work on projects within a time limit.";
+    }
+    if (normalizedText.includes('masterclass')) {
+      return "Masterclass is an expert-led session where industry experts share their knowledge and insights.";
+    }
+    if (normalizedText.includes('project')) {
+      return "Project refers to practical assignments that help you apply what you've learned in real-world scenarios.";
+    }
+    if (normalizedText.includes('scenario')) {
+      return "Scenario refers to real-world case studies that help you practice problem-solving skills.";
+    }
   }
   
   // No confident match found
