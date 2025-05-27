@@ -828,7 +828,7 @@ const app = new App({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
 
-console.log("🚀 USING INTERACTIVE BOT VERSION WITH CATEGORY SELECTION - SINGLE RESPONSE, NO CONFLICTS");
+console.log("🚀 USING INTERACTIVE BOT VERSION WITH CATEGORY SELECTION - FIXED NO_TEXT ERROR");
 
 // MAIN MESSAGE HANDLER with interactive features
 app.message(async ({ message, say, client }) => {
@@ -1003,6 +1003,7 @@ app.message(async ({ message, say, client }) => {
     if (normalizedText === 'help' || normalizedText === 'menu' || normalizedText === 'categories' || 
         normalizedText === 'options' || normalizedText === 'what can you help with') {
       await say({
+        text: "EnquBuddy Learning Assistant - Interactive Help Menu",
         blocks: createMainCategoryBlocks()
       });
       return;
@@ -1042,7 +1043,7 @@ app.message(async ({ message, say, client }) => {
       if (originalText.includes('?') || originalText.toLowerCase().includes('how') || 
           originalText.toLowerCase().includes('what') || originalText.toLowerCase().includes('where')) {
         await say({
-          text: "I'm not sure about that specific question. You can:",
+          text: "I'm not sure about that specific question. You can browse help categories or contact human support.",
           blocks: [
             {
               "type": "section",
@@ -1081,6 +1082,7 @@ app.message(async ({ message, say, client }) => {
       } else {
         // For non-questions, just show the interactive menu
         await say({
+          text: "EnquBuddy Learning Assistant - How can I help you today?",
           blocks: createMainCategoryBlocks()
         });
       }
@@ -1140,7 +1142,7 @@ app.action(/^category_(.+)$/, async ({ body, ack, say, action }) => {
   if (categoryKey === 'others') {
     // Special handling for "Others" category
     await say({
-      text: "For questions not covered in our standard categories, please contact human support:",
+      text: "Other Questions - Contact human support for questions not covered in standard categories",
       blocks: [
         {
           "type": "header",
@@ -1190,7 +1192,9 @@ app.action(/^category_(.+)$/, async ({ body, ack, say, action }) => {
     });
   } else {
     // Show subcategories for the selected category
+    const category = HELP_CATEGORIES[categoryKey];
     await say({
+      text: `${category ? category.title : 'Help Category'} - Choose a specific topic`,
       blocks: createSubcategoryBlocks(categoryKey)
     });
   }
@@ -1209,7 +1213,7 @@ app.action(/^subcategory_(.+)$/, async ({ body, ack, say, action }) => {
   const subcategory = category?.subcategories.find(sub => sub.value === subcategoryValue);
   
   await say({
-    text: helpContent,
+    text: subcategory ? subcategory.text : "Help Information",
     blocks: [
       {
         "type": "header",
@@ -1263,6 +1267,7 @@ app.action('back_to_categories', async ({ body, ack, say }) => {
   await ack();
   
   await say({
+    text: "EnquBuddy Learning Assistant - Interactive Help Menu",
     blocks: createMainCategoryBlocks()
   });
 });
@@ -1272,6 +1277,7 @@ app.action('show_main_categories', async ({ body, ack, say }) => {
   await ack();
   
   await say({
+    text: "EnquBuddy Learning Assistant - Interactive Help Menu",
     blocks: createMainCategoryBlocks()
   });
 });
@@ -1515,7 +1521,7 @@ const PORT = process.env.PORT || 3000;
     
     // Start the Slack app
     await app.start(PORT);
-    console.log(`⚡️ Educational Bot is running on port ${PORT}! Interactive version with category selection - single responses only.`);
+    console.log(`⚡️ Educational Bot is running on port ${PORT}! Interactive version with category selection - FIXED NO_TEXT ERROR.`);
   } catch (error) {
     console.error('Error starting the app:', error);
   }
