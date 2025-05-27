@@ -1539,102 +1539,10 @@ app.event('app_mention', async ({ event, say, client }) => {
   }
 });
 
-// Home tab - updated with interactive features
-app.event('app_home_opened', async ({ event, client }) => {
-  try {
-    // Get some stats if MongoDB is connected
-    let stats = { total: 0, matched: 0, unmatched: 0 };
-    let matchRate = '0';
-    let dbStatus = "❓ Unknown";
-    
-    if (isConnected) {
-      try {
-        const status = await pingDatabase();
-        dbStatus = status.connected ? "✅ Connected" : "❌ Disconnected";
-        
-        if (status.connected) {
-          stats = await getQuestionStats();
-          matchRate = stats.total > 0 ? ((stats.matched / stats.total) * 100).toFixed(2) : '0';
-        }
-      } catch (dbError) {
-        console.error('Error checking database status:', dbError);
-        dbStatus = "❌ Error";
-      }
-    } else {
-      dbStatus = "❌ Not Connected";
-    }
-    
-    await client.views.publish({
-      user_id: event.user,
-      view: {
-        "type": "home",
-        "blocks": [
-          {
-            "type": "header",
-            "text": {
-              "type": "plain_text",
-              "text": "🤖 EnquBuddy Learning Assistant",
-              "emoji": true
-            }
-          },
-          {
-            "type": "section",
-            "text": {
-              "type": "mrkdwn",
-              "text": "Welcome to your interactive learning assistant! I can help you with questions about your learning journey."
-            }
-          },
-          {
-            "type": "divider"
-          },
-          {
-            "type": "section",
-            "text": {
-              "type": "mrkdwn",
-              "text": "*🔧 **Zoom & Meeting Support***\nHelp with joining meetings, audio/video setup, troubleshooting\n\n*🖥️ **Enqurious Learning Platform***\nComplete platform support - login, navigation, tasks, assessments\n\n*📹 **Content Access & Resources***\nSession recordings, learning calendar, resource links\n\n*🆘 **Support & Troubleshooting***\nPlatform issues, technical support, general help\n\n*❓ **Others***\nFor questions not covered above, I'll connect you with human support"
-            }
-          },
-          {
-            "type": "section",
-            "text": {
-              "type": "mrkdwn",
-              "text": "*How to get help:*\n• Type `help` or `menu` to see interactive categories\n• Ask me questions directly\n• Use @EnquBuddy in channels\n• For complex issues, I'll connect you with <@abhilipsha>"
-            }
-          },
-          {
-            "type": "actions",
-            "elements": [
-              {
-                "type": "button",
-                "text": {
-                  "type": "plain_text",
-                  "text": "📋 Start Interactive Help",
-                  "emoji": true
-                },
-                "value": "start_help",
-                "action_id": "show_main_categories"
-              }
-            ]
-          },
-          {
-            "type": "divider"
-          },
-          {
-            "type": "context",
-            "elements": [
-              {
-                "type": "mrkdwn",
-                "text": `Database Status: ${dbStatus} | 📊 Questions Processed: ${stats.total} (${matchRate}% confident answers)`
-              }
-            ]
-          }
-        ]
-      }
-    });
-  } catch (error) {
-    console.error('Error publishing home view:', error);
-  }
-});
+// Home tab - DISABLED (user doesn't want home screen)
+// app.event('app_home_opened', async ({ event, client }) => {
+//   // Home tab functionality removed per user request
+// });
 
 // Define the port - use the one Render provides
 const PORT = process.env.PORT || 3000;
