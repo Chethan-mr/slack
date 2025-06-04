@@ -1,7 +1,7 @@
 {
-  "name": "databricks-slack-bot",
+  "name": "enqubuddy-slack-bot",
   "version": "2.0.0",
-  "description": "Multi-workspace educational Slack bot with learning capabilities",
+  "description": "Multi-workspace EnquBuddy learning assistant bot",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
