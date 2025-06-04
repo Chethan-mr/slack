@@ -12,7 +12,7 @@ const uri = process.env.MONGODB_URI;
 const client = new MongoClient(uri);
 
 // Database and collections
-const dbName = 'botlogs';
+const dbName = 'enqubuddy_logs';
 const questionsCollectionName = 'questions';
 const installationsCollectionName = 'installations';
 
